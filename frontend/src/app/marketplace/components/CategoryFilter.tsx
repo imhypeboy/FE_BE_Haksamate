@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
-import { CATEGORIES } from "../constants"
+import { CATEGORY_INFO } from "../constants"
 
 interface CategoryFilterProps {
   selectedCategory: string
@@ -22,13 +22,13 @@ const CategoryFilter = React.memo(({ selectedCategory, onCategoryChange, isDarkM
     >
       <h3 className={`font-bold text-xl mb-6 ${isDarkMode ? "text-white" : "text-gray-900"}`}>카테고리</h3>
       <div className="space-y-2">
-        {CATEGORIES.map((category) => {
+        {CATEGORY_INFO.map((category) => {
           const isActive = selectedCategory === category.id
           const isHovered = hoveredCategory === category.id
 
           return (
             <button
-              key={category.id}
+              key={`category-filter-${category.id}`}
               onClick={() => onCategoryChange(category.id)}
               onMouseEnter={() => setHoveredCategory(category.id)}
               onMouseLeave={() => setHoveredCategory(null)}

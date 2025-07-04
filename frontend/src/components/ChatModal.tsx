@@ -10,7 +10,7 @@ interface ChatModalProps {
   isOpen: boolean
   onClose: () => void
   initialRoomId?: number
-  sellerId?: string // 🔧 sellerId prop 추가
+  sellerId?: string | null// 🔧 sellerId prop 추가
   isDarkMode: boolean
 }
 

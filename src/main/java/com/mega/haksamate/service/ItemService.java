@@ -3,6 +3,7 @@ package com.mega.haksamate.service;
 import com.mega.haksamate.dto.ItemRegisterRequestDTO;
 import com.mega.haksamate.dto.ItemResponseDTO;
 import com.mega.haksamate.dto.ItemSuggestionDTO;
+import com.mega.haksamate.dto.MeetLocationDTO;
 import com.mega.haksamate.entity.*;
 import com.mega.haksamate.repository.*;
 import jakarta.persistence.EntityManager;
@@ -44,18 +45,18 @@ public class ItemService {
     public ItemResponseDTO getItemResponseById(Long id) {
         Item item = itemRepository.findItemWithSellerAndImagesById(id)
                 .orElseThrow(() -> new NoSuchElementException("해당 ID의 게시글이 존재하지 않습니다."));
-        return toResponseDTO(item);
+        return ItemResponseDTO.from(item);
     }
 
     public List<ItemResponseDTO> getAllItems() {
         return itemRepository.findAllWithSellerAndImages().stream()
-                .map(this::toResponseDTO)
+                .map(ItemResponseDTO::from)
                 .collect(Collectors.toList());
     }
 
     public List<ItemResponseDTO> getItemsBySellerId(UUID userId) {
         return itemRepository.findBySellerUserIdWithImages(userId).stream()
-                .map(this::toResponseDTO)
+                .map(ItemResponseDTO::from)
                 .collect(Collectors.toList());
     }
 
@@ -64,13 +65,22 @@ public class ItemService {
     }
 
     public ItemResponseDTO toResponseDTO(Item item) {
+        MeetLocationDTO meetLocation = null;
+        if (item.getMeetLocationAddress() != null || item.getMeetLocationLat() != null || item.getMeetLocationLng() != null) {
+            meetLocation = MeetLocationDTO.builder()
+                    .address(item.getMeetLocationAddress())
+                    .lat(item.getMeetLocationLat())
+                    .lng(item.getMeetLocationLng())
+                    .build();
+        }
+
         return ItemResponseDTO.builder()
                 .itemid(item.getItemid())
                 .title(item.getTitle())
                 .description(item.getDescription())
                 .price(item.getPrice())
                 .category(item.getCategory())
-                .meetLocation(item.getMeetLocation())
+                .meetLocation(meetLocation)
                 .regdate(String.valueOf(item.getRegdate()))
                 .sellerId(item.getSeller() != null ? item.getSeller().getId() : null)
                 .status(item.getStatus().name())
@@ -83,6 +93,8 @@ public class ItemService {
     public Long saveItemWithImages(ItemRegisterRequestDTO requestDTO, List<MultipartFile> images) {
         Profile seller = profileRepository.findById(requestDTO.getSellerId())
                 .orElseThrow(() -> new RuntimeException("유저를 찾을 수 없습니다."));
+        // 선택적으로 MeetLocationDTO 만들고 싶다면 여기서 생성
+        MeetLocationDTO location = requestDTO.getMeetLocation();
 
         Item item = Item.builder()
                 .seller(seller)
@@ -91,7 +103,9 @@ public class ItemService {
                 .price(requestDTO.getPrice())
                 .category(requestDTO.getCategory())
                 .status(Item.Status.판매중)
-                .meetLocation(requestDTO.getMeetLocation())
+                .meetLocationAddress(location != null ? location.getAddress() : null)
+                .meetLocationLat(location != null ? location.getLat() : null)
+                .meetLocationLng(location != null ? location.getLng() : null)
                 .regdate(System.currentTimeMillis())
                 .build();
 
@@ -104,13 +118,16 @@ public class ItemService {
     public void updateItem(Long itemId, ItemRegisterRequestDTO requestDTO, List<MultipartFile> images) {
         Item item = itemRepository.findById(itemId)
                 .orElseThrow(() -> new NoSuchElementException("해당 ID의 게시글이 존재하지 않습니다."));
+        MeetLocationDTO location = requestDTO.getMeetLocation();
 
         // 기본 정보 업데이트
         item.setTitle(requestDTO.getTitle());
         item.setDescription(requestDTO.getDescription());
         item.setPrice(requestDTO.getPrice());
         item.setCategory(requestDTO.getCategory());
-        item.setMeetLocation(requestDTO.getMeetLocation());
+        item.setMeetLocationAddress(location != null ? location.getAddress() : null);
+        item.setMeetLocationLat(location != null ? location.getLat() : null);
+        item.setMeetLocationLng(location != null ? location.getLng() : null);
 
         // 🔧 상태 업데이트 추가 (requestDTO에 status 필드가 있다면)
         if (requestDTO.getStatus() != null) {
@@ -224,7 +241,7 @@ public class ItemService {
 
     public List<ItemResponseDTO> getCompletedItemsByBuyer(UUID buyerId) {
         return itemRepository.findCompletedByBuyerUserId(buyerId).stream()
-                .map(this::toResponseDTO)
+                .map(ItemResponseDTO::from)
                 .collect(Collectors.toList());
     }
 

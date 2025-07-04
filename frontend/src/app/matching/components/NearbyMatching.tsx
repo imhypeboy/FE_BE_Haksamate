@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useCallback, useEffect, useRef } from "react"
-import { useKakaoMap } from "../hooks/useKakaoMap"
+import { useKakaoMap } from "@/hooks/useKakaoMap"
 import { useGeolocation } from "../hooks/useGeolocation"
 import { useAuth } from "@/hooks/useAuth"
 import { ApiKeyErrorDisplay } from "./ApiKeyErrorDisplay"

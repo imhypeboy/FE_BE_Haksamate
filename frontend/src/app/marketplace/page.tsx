@@ -15,6 +15,10 @@ import AnimatedBackground from "../matching/components/AnimatedBackground"
 import { useMarketplace } from "./hooks/useMarketplace"
 import { useAuth } from "@/hooks/useAuth"
 import type { Product, SearchFilters } from "./types"
+import ReportModal from "./components/ReportModal"
+import { useTransactions } from "./hooks/useTransactions"
+import {useReports} from "./hooks/useReports"
+import { useKakaoMap } from "@/hooks/useKakaoMap"
 
 const MarketplacePage: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -26,34 +30,42 @@ const MarketplacePage: React.FC = () => {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showEditProduct, setShowEditProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportingProduct, setReportingProduct] = useState<Product | null>(null)
 
-  // 🔧 채팅 관련 상태 - sellerId 추가
+  // 채팅 관련 상태
   const [showChat, setShowChat] = useState(false)
   const [chatSellerId, setChatSellerId] = useState<string | null>(null)
-
-  const { user } = useAuth()
+  const { createReport } = useReports()
+  const { user, isLoading} = useAuth()
   const {
     products,
-    isLoading,
+    isMarketplaceLoading,
     error,
     loadProducts,
     searchProducts,
-    likeProduct,
-    unlikeProduct,
+    toggleLike,
     getProduct,
+    createProduct,
+    updateProduct,
     deleteProduct,
     updateProductStatus,
     completeTransaction,
   } = useMarketplace()
 
+  const { createTransaction } = useTransactions()
+  const kakaoMapState = useKakaoMap()
+
+  
   // 초기 상품 로드
   useEffect(() => {
+    console.log("🧑 현재 사용자 ID:", user?.id)
     const filters: SearchFilters = {
       category: selectedCategory,
       sortBy: "latest",
     }
-    loadProducts(filters)
-  }, [selectedCategory, loadProducts])
+    loadProducts(user?.id,filters)
+  }, [user,isLoading, selectedCategory, loadProducts])
 
   // 검색 처리
   useEffect(() => {
@@ -68,47 +80,57 @@ const MarketplacePage: React.FC = () => {
         category: selectedCategory,
         sortBy: "latest",
       }
-      loadProducts(filters)
+      loadProducts(user?.id,filters)
     }
   }, [searchQuery, selectedCategory, searchProducts, loadProducts])
 
   const handleLike = useCallback(
-    async (productId: string) => {
+    async (productId: number) => {
       if (!user) {
         alert("로그인이 필요합니다.")
         return
       }
 
-      const product = products.find((p) => p.id === productId)
+      const product = products.find((p) => p.itemid === productId)
       if (!product) return
 
-      if (product.isLiked) {
-        await unlikeProduct(productId, user.id)
-      } else {
-        await likeProduct(productId, user.id)
-      }
+      toggleLike(productId,user.id)
+
     },
-    [user, products, likeProduct, unlikeProduct],
+    [user, products, toggleLike],
   )
 
-  // 🔧 채팅 핸들러 - sellerId 설정
+  // 채팅 핸들러
   const handleChat = useCallback(
-    (sellerId: string) => {
+    async (sellerId: string) => {
       if (!user) {
         alert("로그인이 필요합니다.")
         return
+      }
+
+      // Create transaction when starting chat
+      try {
+        const product = products.find((p) => p.sellerId === sellerId)
+        if (product) {
+          await createTransaction({
+            itemId: product.itemid,
+            sellerId: sellerId,
+          })
+        }
+      } catch (error) {
+        console.warn("거래 생성 실패:", error)
       }
 
       console.log("💬 채팅 시작:", { sellerId, userId: user.id })
       setChatSellerId(sellerId)
       setShowChat(true)
     },
-    [user],
+    [user, products, createTransaction],
   )
 
   const handleProductClick = useCallback(
     async (product: Product) => {
-      const detailedProduct = await getProduct(product.id)
+      const detailedProduct = await getProduct(product.itemid)
       if (detailedProduct) {
         setSelectedProduct(detailedProduct)
       }
@@ -124,15 +146,15 @@ const MarketplacePage: React.FC = () => {
     setShowAddProduct(true)
   }, [user])
 
-  // 🔧 상품 수정 핸들러
+  // 상품 수정 핸들러
   const handleEditProduct = useCallback((product: Product) => {
     setEditingProduct(product)
     setShowEditProduct(true)
   }, [])
 
-  // 🔧 상품 삭제 핸들러
+  // 상품 삭제 핸들러
   const handleDeleteProduct = useCallback(
-    async (productId: string) => {
+    async (productId: number) => {
       try {
         await deleteProduct(productId)
         alert("상품이 삭제되었습니다.")
@@ -143,16 +165,16 @@ const MarketplacePage: React.FC = () => {
     [deleteProduct],
   )
 
-  // 🔧 상품 상태 변경 핸들러
+  // 상품 상태 변경 핸들러
   const handleStatusChange = useCallback(
-    async (productId: string, status: "available" | "reserved" | "sold") => {
+    async (productId: number, status: "판매중" | "예약중" | "거래완료") => {
       try {
         await updateProductStatus(productId, status)
 
         const statusLabels = {
-          available: "판매중",
-          reserved: "예약중",
-          sold: "판매완료",
+          판매중: "판매중",
+          예약중: "예약중",
+          거래완료: "판매완료",
         }
 
         alert(`상품 상태가 "${statusLabels[status]}"로 변경되었습니다.`)
@@ -162,10 +184,18 @@ const MarketplacePage: React.FC = () => {
     },
     [updateProductStatus],
   )
-
-  // 🔧 거래 완료 핸들러
+  const handleReportSubmit = async (reportData: any) => {
+    try {
+      await createReport(reportData)
+      setShowReportModal(false)
+      setReportingProduct(null)
+    } catch (error) {
+      throw error
+    }
+  }
+  // 거래 완료 핸들러
   const handleCompleteTransaction = useCallback(
-    async (productId: string) => {
+    async (productId: number) => {
       try {
         await completeTransaction(productId)
         alert("거래가 완료되었습니다!")
@@ -175,6 +205,11 @@ const MarketplacePage: React.FC = () => {
     },
     [completeTransaction],
   )
+
+  const handleReport = useCallback((product: Product) => {
+    setReportingProduct(product)
+    setShowReportModal(true)
+  }, [])
 
   const toggleTheme = useCallback(() => {
     setIsDarkMode((prev) => !prev)
@@ -186,7 +221,7 @@ const MarketplacePage: React.FC = () => {
       category: selectedCategory,
       sortBy: "latest",
     }
-    loadProducts(filters)
+    loadProducts(user?.id,filters)
     setShowAddProduct(false)
   }, [selectedCategory, loadProducts])
 
@@ -196,10 +231,10 @@ const MarketplacePage: React.FC = () => {
       category: selectedCategory,
       sortBy: "latest",
     }
-    loadProducts(filters)
+    loadProducts(user?.id,filters)
     setShowEditProduct(false)
     setEditingProduct(null)
-    setSelectedProduct(null) // 🔧 ProductModal도 닫기
+    setSelectedProduct(null)
   }, [selectedCategory, loadProducts])
 
   return (
@@ -265,25 +300,25 @@ const MarketplacePage: React.FC = () => {
                 </div>
 
                 {/* 로딩 상태 */}
-                {isLoading && (
+                {isMarketplaceLoading && (
                   <div className="flex justify-center items-center py-16">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
                   </div>
                 )}
 
                 {/* 에러 상태 */}
-                {error && (
+                {isMarketplaceLoading && (
                   <div className="text-center py-16">
                     <div className="text-red-500 text-lg">{error}</div>
                   </div>
                 )}
 
                 {/* 상품 그리드 */}
-                {!isLoading && !error && (
+                {!isMarketplaceLoading && !error && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {products.map((product, index) => (
                       <div
-                        key={product.id}
+                        key={`product-${product.itemid}`}
                         style={{
                           animationDelay: `${index * 100}ms`,
                           animation: "slideInUp 0.6s ease-out forwards",
@@ -299,6 +334,7 @@ const MarketplacePage: React.FC = () => {
                           onDelete={handleDeleteProduct}
                           onComplete={handleCompleteTransaction}
                           onStatusChange={handleStatusChange}
+                          onReport={handleReport}
                           currentUserId={user?.id}
                           isDarkMode={isDarkMode}
                         />
@@ -308,7 +344,7 @@ const MarketplacePage: React.FC = () => {
                 )}
 
                 {/* 빈 상태 */}
-                {!isLoading && !error && products.length === 0 && (
+                {!isMarketplaceLoading && !error && products.length === 0 && (
                   <div
                     className={`text-center py-16 transition-colors duration-500 ${
                       isDarkMode ? "text-gray-400" : "text-gray-500"
@@ -335,9 +371,10 @@ const MarketplacePage: React.FC = () => {
           onClose={() => setSelectedProduct(null)}
           onLike={handleLike}
           onChat={handleChat}
-          onEdit={handleEditProduct} // 🔧 수정 함수 전달
-          currentUserId={user?.id} // 🔧 현재 사용자 ID 전달
+          onEdit={handleEditProduct}
+          currentUserId={user?.id}
           isDarkMode={isDarkMode}
+          kakaoMapState={kakaoMapState}
         />
       )}
 
@@ -345,12 +382,12 @@ const MarketplacePage: React.FC = () => {
         <AddProductModal
           isOpen={showAddProduct}
           onClose={() => setShowAddProduct(false)}
-          onSuccess={handleProductAdded}
+          onCreate={createProduct}
           isDarkMode={isDarkMode}
+          kakaoMapState={kakaoMapState}
         />
       )}
 
-      {/* 🔧 상품 수정 모달 추가 */}
       {showEditProduct && (
         <EditProductModal
           isOpen={showEditProduct}
@@ -358,13 +395,13 @@ const MarketplacePage: React.FC = () => {
             setShowEditProduct(false)
             setEditingProduct(null)
           }}
-          onSuccess={handleProductUpdated}
           product={editingProduct}
+          onUpdate={updateProduct}
           isDarkMode={isDarkMode}
+          kakaoMapState={kakaoMapState}
         />
       )}
 
-      {/* 🔧 기존 ChatModal 사용 - sellerId prop 추가 */}
       {showChat && (
         <ChatModal
           isOpen={showChat}
@@ -373,6 +410,23 @@ const MarketplacePage: React.FC = () => {
             setChatSellerId(null)
           }}
           sellerId={chatSellerId}
+          isDarkMode={isDarkMode}
+        />
+      )}
+
+      {showReportModal && reportingProduct && (
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => {
+            setShowReportModal(false)
+            setReportingProduct(null)
+          }}
+          reportedUserId={reportingProduct.sellerId}
+          reporterUserId={user?.id}
+          itemId={reportingProduct.itemid}
+          reportedUserName={reportingProduct.sellerName}
+          itemTitle={reportingProduct.title}
+          onSubmit={handleReportSubmit}
           isDarkMode={isDarkMode}
         />
       )}

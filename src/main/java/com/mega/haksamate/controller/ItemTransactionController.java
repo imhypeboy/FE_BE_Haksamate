@@ -27,7 +27,7 @@ public class ItemTransactionController {
         return ResponseEntity.ok(transaction);
     }
 
-    @GetMapping("/item/{itemId}/user/{userId}")
+    @GetMapping("/item/{itemId}/buyer/{userId}")
     public ResponseEntity<Map<String, Long>> getTransactionId(
             @PathVariable Long itemId,
             @PathVariable UUID userId) {

@@ -29,9 +29,15 @@ public class Item {
     @Column(nullable = false)
     private String title;
 
-    @Column(name = "meet_location")
-    private String meetLocation;
+    @Column(name = "meet_location_address")
+    private String meetLocationAddress;
 
+    @Column(name = "meet_location_lat")
+    private Double meetLocationLat;
+
+    @Column(name = "meet_location_lng")
+    private Double meetLocationLng;
+    
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -52,7 +58,6 @@ public class Item {
 
     private String thumbnail;
 
-    private String time;
 
     @Builder.Default
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL, orphanRemoval = true)

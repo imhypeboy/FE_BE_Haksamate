@@ -1,418 +1,358 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import type { Product, SearchFilters } from "../types"
+import type { Product, CreateProductRequest, UpdateProductRequest, SearchFilters } from "../types"
 
-const BASE_URL = "http://localhost:8080"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
 export const useMarketplace = () => {
   const [products, setProducts] = useState<Product[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [isMarketplaceLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [totalPages, setTotalPages] = useState(0)
-  const [currentPage, setCurrentPage] = useState(0)
 
-  const loadProducts = useCallback(async (filters: SearchFilters, page = 0) => {
-    console.log("📦 상품 목록 로드 시작:", { filters, page })
+  const loadProducts = useCallback(async (userId?: string, filters?: SearchFilters) => {
+    setIsLoading(true)
+    setError(null)
+  
+    try {
+      console.log("📦 상품 목록 요청 시작")
+  
+      const response = await fetch(`${API_BASE_URL}/api/items`)
+      if (!response.ok) throw new Error("상품 목록 조회에 실패했습니다.")
+  
+      const products: Product[] = await response.json()
+      console.log("✅ 상품 목록 응답:", products)
+      console.log("👤 userId:", userId)
+  
+      let likedMap: Record<number, boolean> = {}
+      let likeCountMap: Record<number, number> = {}
+  
+      if (userId) {
+        console.log("❤️ 좋아요 상태 요청:", `${API_BASE_URL}/api/likes/my?userId=${userId}`)
+        const likesRes = await fetch(`${API_BASE_URL}/api/likes/my?userId=${userId}`)
+        if (likesRes.ok) {
+          const likes = await likesRes.json()
+          console.log("✅ 좋아요 목록 응답:", likes)
+  
+          // 여기 수정
+          likedMap = Object.fromEntries(likes.map((item: { itemid: number }) => [item.itemid, true]))
+          likeCountMap = Object.fromEntries(likes.map((item: { itemid: number; likeCount: number }) => [item.itemid, item.likeCount]))
+        } else {
+          console.warn("⚠️ 좋아요 상태 조회 실패:", likesRes.status)
+        }
+      }
+  
+      // ✅ 좋아요 개수 별도 병합하지 않아도 likeCountMap으로 충분히 해결 가능
+      const productsWithLikes = products.map((product) => {
+        const merged = {
+          ...product,
+          isLiked: likedMap[product.itemid] || false,
+          likeCount: likeCountMap[product.itemid] ?? 0,
+        }
+        console.log("🔄 병합된 상품:", merged)
+        return merged
+      })
+  
+      setProducts(productsWithLikes)
+      return productsWithLikes
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "상품 목록 조회에 실패했습니다."
+      console.error("❌ 에러 발생:", errorMessage)
+      setError(errorMessage)
+      throw new Error(errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+  
+  
+  
+  
+  
+  const searchProducts = useCallback(async (keyword: string, filters?: SearchFilters) => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const response = await fetch(`${BASE_URL}/api/items`)
+      const queryParams = new URLSearchParams()
+      queryParams.append("keyword", keyword)
+      if (filters?.category && filters.category !== "전체") {
+        queryParams.append("category", filters.category)
+      }
+      if (filters?.minPrice) {
+        queryParams.append("minPrice", filters.minPrice.toString())
+      }
+      if (filters?.maxPrice) {
+        queryParams.append("maxPrice", filters.maxPrice.toString())
+      }
+      if (filters?.sortBy) {
+        queryParams.append("sortBy", filters.sortBy)
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/items/search?${queryParams.toString()}`)
 
       if (!response.ok) {
-        throw new Error(`상품 목록 조회 실패: ${response.status}`)
+        throw new Error("상품 검색에 실패했습니다.")
       }
 
-      const data = await response.json()
-      console.log("✅ 상품 목록 로드 성공:", data.length, "개")
-
-      // 백엔드 응답을 프론트엔드 타입으로 변환
-      const transformedProducts: Product[] = data.map((item: any) => ({
-        id: item.itemid.toString(),
-        title: item.title,
-        description: item.description,
-        price: item.price,
-        images: item.itemImages || [],
-        category: item.category,
-        condition: "good" as const, // 백엔드에 condition 필드가 없으므로 기본값
-        location: item.meetLocation || "위치 미정",
-        sellerId: item.sellerId,
-        sellerName: item.sellerName || "익명",
-        sellerRating: 4.5, // 기본값
-        createdAt: new Date(item.regdate),
-        updatedAt: new Date(item.regdate),
-        status: mapBackendStatus(item.status),
-        views: 0, // 백엔드에 views 필드가 없음
-        likes: 0, // 별도 API로 조회 필요
-        isLiked: false, // 별도 API로 조회 필요
-        tags: [],
-      }))
-
-      // 필터 적용
-      let filteredProducts = transformedProducts
-
-      if (filters.category && filters.category !== "all") {
-        filteredProducts = filteredProducts.filter((p) => p.category === filters.category)
-      }
-
-      // 정렬 적용
-      if (filters.sortBy === "price-low") {
-        filteredProducts.sort((a, b) => a.price - b.price)
-      } else if (filters.sortBy === "price-high") {
-        filteredProducts.sort((a, b) => b.price - a.price)
-      } else {
-        filteredProducts.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      }
-
-      setProducts(filteredProducts)
-    } catch (error) {
-      console.error("❌ 상품 목록 로드 실패:", error)
-      setError(error instanceof Error ? error.message : "상품 목록을 불러오는데 실패했습니다.")
-      setProducts([])
+      const products = await response.json()
+      setProducts(products)
+      return products
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "상품 검색에 실패했습니다."
+      setError(errorMessage)
+      throw new Error(errorMessage)
     } finally {
       setIsLoading(false)
     }
   }, [])
 
-  const searchProducts = useCallback(async (searchQuery: string, filters: SearchFilters) => {
-    console.log("🔍 상품 검색:", { searchQuery, filters })
-    setIsLoading(true)
-    setError(null)
-
+  const getProduct = useCallback(async (id: number): Promise<Product | null> => {
     try {
-      // 전체 상품을 먼저 로드한 후 클라이언트에서 필터링
-      // 실제로는 백엔드에서 검색 API를 제공해야 함
-      const response = await fetch(`${BASE_URL}/api/items`)
+      const response = await fetch(`${API_BASE_URL}/api/items/${id}`)
 
       if (!response.ok) {
-        throw new Error(`상품 검색 실패: ${response.status}`)
+        throw new Error("상품 조회에 실패했습니다.")
       }
 
-      const data = await response.json()
-
-      const transformedProducts: Product[] = data.map((item: any) => ({
-        id: item.itemid.toString(),
-        title: item.title,
-        description: item.description,
-        price: item.price,
-        images: item.itemImages || [],
-        category: item.category,
-        condition: "good" as const,
-        location: item.meetLocation || "위치 미정",
-        sellerId: item.sellerId,
-        sellerName: item.sellerName || "익명",
-        sellerRating: 4.5,
-        createdAt: new Date(item.regdate),
-        updatedAt: new Date(item.regdate),
-        status: mapBackendStatus(item.status),
-        views: 0,
-        likes: 0,
-        isLiked: false,
-        tags: [],
-      }))
-
-      // 검색어로 필터링
-      let filteredProducts = transformedProducts.filter((product) => {
-        const query = searchQuery.toLowerCase()
-        return product.title.toLowerCase().includes(query) || product.description.toLowerCase().includes(query)
-      })
-
-      // 카테고리 필터 적용
-      if (filters.category && filters.category !== "all") {
-        filteredProducts = filteredProducts.filter((p) => p.category === filters.category)
-      }
-
-      setProducts(filteredProducts)
-      console.log("✅ 상품 검색 성공:", filteredProducts.length, "개")
-    } catch (error) {
-      console.error("❌ 상품 검색 실패:", error)
-      setError(error instanceof Error ? error.message : "상품 검색에 실패했습니다.")
-      setProducts([])
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  const likeProduct = useCallback(async (productId: string, userId: string) => {
-    try {
-      console.log("❤️ 상품 좋아요:", { productId, userId })
-
-      const response = await fetch(`${BASE_URL}/api/likes/${productId}?userId=${userId}`, {
-        method: "POST",
-      })
-
-      if (!response.ok) {
-        throw new Error(`좋아요 실패: ${response.status}`)
-      }
-
-      // 로컬 상태 업데이트
-      setProducts((prev) =>
-        prev.map((product) =>
-          product.id === productId
-            ? {
-                ...product,
-                isLiked: true,
-                likes: product.likes + 1,
-              }
-            : product,
-        ),
-      )
-
-      console.log("✅ 좋아요 성공")
-      return true
-    } catch (error) {
-      console.error("❌ 좋아요 실패:", error)
-      return false
-    }
-  }, [])
-
-  const unlikeProduct = useCallback(async (productId: string, userId: string) => {
-    try {
-      console.log("💔 상품 좋아요 취소:", { productId, userId })
-
-      const response = await fetch(`${BASE_URL}/api/likes/${productId}?userId=${userId}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) {
-        throw new Error(`좋아요 취소 실패: ${response.status}`)
-      }
-
-      // 로컬 상태 업데이트
-      setProducts((prev) =>
-        prev.map((product) =>
-          product.id === productId
-            ? {
-                ...product,
-                isLiked: false,
-                likes: Math.max(0, product.likes - 1),
-              }
-            : product,
-        ),
-      )
-
-      console.log("✅ 좋아요 취소 성공")
-      return true
-    } catch (error) {
-      console.error("❌ 좋아요 취소 실패:", error)
-      return false
-    }
-  }, [])
-
-  const getProduct = useCallback(async (productId: string): Promise<Product | null> => {
-    try {
-      console.log("📦 상품 상세 조회:", productId)
-
-      const response = await fetch(`${BASE_URL}/api/items/${productId}`)
-
-      if (!response.ok) {
-        throw new Error(`상품 조회 실패: ${response.status}`)
-      }
-
-      const item = await response.json()
-      console.log("✅ 상품 상세 조회 성공:", item)
-
-      return {
-        id: item.itemid.toString(),
-        title: item.title,
-        description: item.description,
-        price: item.price,
-        images: item.itemImages || [],
-        category: item.category,
-        condition: "good" as const,
-        location: item.meetLocation || "위치 미정",
-        sellerId: item.sellerId,
-        sellerName: item.sellerName || "익명",
-        sellerRating: 4.5,
-        createdAt: new Date(item.regdate),
-        updatedAt: new Date(item.regdate),
-        status: mapBackendStatus(item.status),
-        views: 0,
-        likes: 0,
-        isLiked: false,
-        tags: [],
-      }
-    } catch (error) {
-      console.error("❌ 상품 상세 조회 실패:", error)
+      const product = await response.json()
+      return product
+    } catch (err) {
+      console.error("상품 조회 실패:", err)
       return null
     }
   }, [])
 
-  const createProduct = useCallback(async (productData: FormData) => {
+  const createProduct = useCallback(async (data: CreateProductRequest, images: File[]) => {
+    setIsLoading(true)
+    setError(null)
+  
     try {
-      console.log("📝 상품 등록:", productData)
-
-      const response = await fetch(`${BASE_URL}/api/items`, {
+      const formData = new FormData()
+      formData.append("item", new Blob([JSON.stringify(data)], { type: "application/json" }))  // ✅ JSON은 Blob으로 명시적으로 설정
+      images.forEach((image) => {
+        formData.append("images", image)
+      })
+          // ✅ 콘솔로 확인
+      console.log("🟢 전송되는 FormData:");
+      for (const [key, value] of formData.entries()) {
+        console.log(`${key}:`, value)
+      }
+      const response = await fetch(`${API_BASE_URL}/api/items`, {
         method: "POST",
-        body: productData,
+        body: formData,
       })
-
+  
       if (!response.ok) {
-        throw new Error(`상품 등록 실패: ${response.status}`)
+        throw new Error("상품 등록에 실패했습니다.")
       }
-
-      const result = await response.json()
-      console.log("✅ 상품 등록 성공:", result)
-      return result
-    } catch (error) {
-      console.error("❌ 상품 등록 실패:", error)
-      throw error
+  
+      const product = await response.json()
+      setProducts((prev) => [product, ...prev])
+      return product
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "상품 등록에 실패했습니다."
+      setError(errorMessage)
+      throw new Error(errorMessage)
+    } finally {
+      setIsLoading(false)
     }
   }, [])
-
-  // 🔧 상품 수정 함수 추가
-  const updateProduct = useCallback(async (productId: string, productData: FormData) => {
+  
+  const updateProduct = useCallback(async (id: number, data: UpdateProductRequest, images?: File[]) => {
+    setIsLoading(true)
+    setError(null)
+  
     try {
-      console.log("📝 상품 수정:", { productId, productData })
-
-      const response = await fetch(`${BASE_URL}/api/items/${productId}`, {
+      const formData = new FormData()
+  
+      // 🔥 JSON 데이터는 반드시 Blob으로, 필드 이름은 "item"
+      formData.append("item", new Blob([JSON.stringify(data)], { type: "application/json" }))
+  
+      if (images) {
+        images.forEach((image) => {
+          formData.append("images", image)
+        })
+      }
+  
+      const response = await fetch(`${API_BASE_URL}/api/items/${id}`, {
         method: "PUT",
-        body: productData,
+        body: formData,
       })
-
+  
       if (!response.ok) {
-        throw new Error(`상품 수정 실패: ${response.status}`)
+        throw new Error("상품 수정에 실패했습니다.")
       }
-
-      const result = await response.json()
-      console.log("✅ 상품 수정 성공:", result)
-      return result
-    } catch (error) {
-      console.error("❌ 상품 수정 실패:", error)
-      throw error
+  
+      const updatedProduct = await response.json()
+      setProducts((prev) =>
+        prev.map((product) => (product.itemid === id ? updatedProduct : product)),
+      )
+      return updatedProduct
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "상품 수정에 실패했습니다."
+      setError(errorMessage)
+      throw new Error(errorMessage)
+    } finally {
+      setIsLoading(false)
     }
   }, [])
+  
 
-  // 🔧 상품 삭제 함수 추가
-  const deleteProduct = useCallback(async (productId: string) => {
+  const deleteProduct = useCallback(async (itemId: number) => {
+    setIsLoading(true)
+    setError(null)
+
     try {
-      console.log("🗑️ 상품 삭제:", productId)
-
-      const response = await fetch(`${BASE_URL}/api/items/${productId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, {
         method: "DELETE",
       })
 
       if (!response.ok) {
-        throw new Error(`상품 삭제 실패: ${response.status}`)
+        throw new Error("상품 삭제에 실패했습니다.")
       }
 
-      console.log("✅ 상품 삭제 성공")
-
-      // 로컬 상태에서 제거
-      setProducts((prev) => prev.filter((product) => product.id !== productId))
-
-      return true
-    } catch (error) {
-      console.error("❌ 상품 삭제 실패:", error)
-      throw error
+      setProducts((prev) => prev.filter((product) => product.itemid !== itemId))
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "상품 삭제에 실패했습니다."
+      setError(errorMessage)
+      throw new Error(errorMessage)
+    } finally {
+      setIsLoading(false)
     }
   }, [])
 
-  // 🔧 상품 상태 변경 함수 추가
-  const updateProductStatus = useCallback(async (productId: string, status: "available" | "reserved" | "sold") => {
+  const likeProduct = useCallback(async (itemId: number, userId: string) => {
     try {
-      console.log("🔄 상품 상태 변경:", { productId, status })
+      const response = await fetch(`${API_BASE_URL}/api/likes/${itemId}?userId=${userId}`, {
+        method: "POST",
+      });
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("응답 실패:", errorText);
+        throw new Error("찜하기에 실패했습니다.");
+      }
+  
+      // 응답이 body 없는 구조이므로 JSON 파싱 생략
+      setProducts((prev) =>
+        prev.map((product) =>
+          product.itemid === itemId
+            ? {
+                ...product,
+                isLiked: true,
+                likeCount: product.likeCount + 1, // 혹시 정확한 값이 필요하면 count API 따로 호출
+              }
+            : product,
+        ),
+      );
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "찜하기에 실패했습니다.";
+      console.error("에러 발생:", errorMessage);
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }, []);
 
-      const backendStatus = mapFrontendStatus(status)
-      const response = await fetch(`${BASE_URL}/api/items/${productId}/status`, {
-        method: "PATCH",
+  const unlikeProduct = useCallback(async (itemId: number, userId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/likes/${itemId}?userId=${userId}`, {
+        method: "DELETE"
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("응답 실패:", errorText);
+        throw new Error("찜해제에 실패했습니다.");
+      }
+  
+      // 응답이 body 없는 구조이므로 JSON 파싱 생략
+      setProducts((prev) =>
+        prev.map((product) =>
+          product.itemid === itemId
+            ? {
+                ...product,
+                isLiked: false,
+                likeCount: product.likeCount - 1, // 혹시 정확한 값이 필요하면 count API 따로 호출
+              }
+            : product,
+        ),
+      );
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "찜 해제에 실패했습니다.";
+      console.error("에러 발생:", errorMessage);
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }, []);
+    // toggleLike 함수 추가 - 현재 상태에 따라 like/unlike 결정
+    const toggleLike = useCallback(
+      async (itemId: number, userId: string) => {
+        const product = products.find((p) => p.itemid === itemId)
+        if (!product) {
+          throw new Error("상품을 찾을 수 없습니다.")
+        }
+  
+        if (product.isLiked) {
+          return await unlikeProduct(itemId, userId)
+        } else {
+          return await likeProduct(itemId, userId)
+        }
+      },
+      [products, likeProduct, unlikeProduct],
+    )
+  
+  const updateProductStatus = useCallback(async (itemId: number, status: "판매중" | "예약중" | "거래완료") => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/items/${itemId}/status`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ status: backendStatus }),
+        body: JSON.stringify({ status }),
       })
 
       if (!response.ok) {
-        throw new Error(`상품 상태 변경 실패: ${response.status}`)
+        throw new Error("상품 상태 변경에 실패했습니다.")
       }
 
-      console.log("✅ 상품 상태 변경 성공")
-
-      // 로컬 상태 업데이트
-      setProducts((prev) => prev.map((product) => (product.id === productId ? { ...product, status } : product)))
-
-      return true
-    } catch (error) {
-      console.error("❌ 상품 상태 변경 실패:", error)
-      throw error
+      const updatedProduct = await response.json()
+      setProducts((prev) => prev.map((product) => (product.itemid === itemId ? { ...product, status } : product)))
+      return updatedProduct
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "상품 상태 변경에 실패했습니다."
+      setError(errorMessage)
+      throw new Error(errorMessage)
     }
   }, [])
 
-  // 🔧 거래 완료 함수 추가
-  const completeTransaction = useCallback(async (productId: string, chatRoomId?: number) => {
-    try {
-      console.log("✅ 거래 완료:", { productId, chatRoomId })
-
-      const url = chatRoomId
-        ? `${BASE_URL}/api/items/${productId}/complete?chatRoomId=${chatRoomId}`
-        : `${BASE_URL}/api/items/${productId}/complete`
-
-      const response = await fetch(url, {
-        method: "POST",
-      })
-
-      if (!response.ok) {
-        throw new Error(`거래 완료 실패: ${response.status}`)
+  const completeTransaction = useCallback(
+    async (itemId: number) => {
+      try {
+        await updateProductStatus(itemId, "거래완료")
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "거래 완료 처리에 실패했습니다."
+        setError(errorMessage)
+        throw new Error(errorMessage)
       }
-
-      console.log("✅ 거래 완료 성공")
-
-      // 로컬 상태 업데이트
-      setProducts((prev) =>
-        prev.map((product) => (product.id === productId ? { ...product, status: "sold" as const } : product)),
-      )
-
-      return true
-    } catch (error) {
-      console.error("❌ 거래 완료 실패:", error)
-      throw error
-    }
-  }, [])
+    },
+    [updateProductStatus],
+  )
 
   return {
     products,
-    isLoading,
+    isMarketplaceLoading,
     error,
-    totalPages,
-    currentPage,
     loadProducts,
     searchProducts,
-    likeProduct,
-    unlikeProduct,
     getProduct,
     createProduct,
     updateProduct,
     deleteProduct,
+    likeProduct,
+    unlikeProduct,
     updateProductStatus,
     completeTransaction,
-  }
-}
-
-// 백엔드 상태를 프론트엔드 상태로 매핑
-const mapBackendStatus = (status: string): "available" | "reserved" | "sold" => {
-  switch (status) {
-    case "판매중":
-      return "available"
-    case "예약중":
-      return "reserved"
-    case "거래완료":
-      return "sold"
-    default:
-      return "available"
-  }
-}
-
-// 프론트엔드 상태를 백엔드 상태로 매핑
-const mapFrontendStatus = (status: "available" | "reserved" | "sold"): string => {
-  switch (status) {
-    case "available":
-      return "판매중"
-    case "reserved":
-      return "예약중"
-    case "sold":
-      return "거래완료"
-    default:
-      return "판매중"
+    toggleLike,
   }
 }

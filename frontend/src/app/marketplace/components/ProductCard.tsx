@@ -1,18 +1,19 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState,useEffect} from "react"
 import { Heart, Eye, MapPin, Clock, MessageCircle, Star, MoreVertical, Edit, Trash2, CheckCircle } from "lucide-react"
 import type { Product } from "../types"
 
 interface ProductCardProps {
   product: Product
-  onLike?: (productId: string) => void
+  onLike?: (productId: number) => void
   onChat?: (sellerId: string) => void
   onClick?: (product: Product) => void
   onEdit?: (product: Product) => void
-  onDelete?: (productId: string) => void
-  onComplete?: (productId: string) => void
-  onStatusChange?: (productId: string, status: "available" | "reserved" | "sold") => void
+  onDelete?: (productId: number) => void
+  onComplete?: (productId: number) => void
+  onReport?:(product:Product)=>void
+  onStatusChange?: (productId: number, status: "판매중" | "예약중" | "거래완료") => void
   currentUserId?: string
   isDarkMode?: boolean
 }
@@ -38,69 +39,21 @@ const ProductCard = React.memo(
       return new Intl.NumberFormat("ko-KR").format(price) + "원"
     }
 
-    const formatTimeAgo = (date: Date) => {
-      const now = new Date()
-      const diff = now.getTime() - date.getTime()
-      const minutes = Math.floor(diff / 60000)
-      const hours = Math.floor(diff / 3600000)
-      const days = Math.floor(diff / 86400000)
+    const formatTimeAgo = (timestamp: number) => {
+      const now = Date.now();
+      const diff = now - timestamp;
+    
+      const minutes = Math.floor(diff / 60000);
+      if (minutes < 1) return "방금 전";
+      if (minutes < 60) return `${minutes}분 전`;
+    
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}시간 전`;
+    
+      const days = Math.floor(hours / 24);
+      return `${days}일 전`;
+    };
 
-      if (minutes < 1) return "방금 전"
-      if (minutes < 60) return `${minutes}분 전`
-      if (hours < 24) return `${hours}시간 전`
-      return `${days}일 전`
-    }
-
-    const getConditionColor = (condition: string) => {
-      if (isDarkMode) {
-        switch (condition) {
-          case "new":
-            return "bg-green-500/20 text-green-300"
-          case "like-new":
-            return "bg-blue-500/20 text-blue-300"
-          case "good":
-            return "bg-yellow-500/20 text-yellow-300"
-          case "fair":
-            return "bg-orange-500/20 text-orange-300"
-          case "poor":
-            return "bg-red-500/20 text-red-300"
-          default:
-            return "bg-gray-500/20 text-gray-300"
-        }
-      } else {
-        switch (condition) {
-          case "new":
-            return "bg-green-50 text-green-600"
-          case "like-new":
-            return "bg-blue-50 text-blue-600"
-          case "good":
-            return "bg-yellow-50 text-yellow-600"
-          case "fair":
-            return "bg-orange-50 text-orange-600"
-          case "poor":
-            return "bg-red-50 text-red-600"
-          default:
-            return "bg-gray-50 text-gray-600"
-        }
-      }
-    }
-
-    const getConditionLabel = (condition: string) => {
-      switch (condition) {
-        case "new":
-          return "새상품"
-        case "like-new":
-          return "거의 새것"
-        case "good":
-          return "좋음"
-        case "fair":
-          return "보통"
-        case "poor":
-          return "나쁨"
-        default:
-          return condition
-      }
-    }
 
     const getStatusColor = (status: string) => {
       switch (status) {
@@ -122,7 +75,7 @@ const ProductCard = React.memo(
         case "reserved":
           return "예약중"
         case "sold":
-          return "판매완료"
+          return "거래완료"
         default:
           return "판매중"
       }
@@ -150,7 +103,7 @@ const ProductCard = React.memo(
         case "sold":
           return {
             icon: "⚫",
-            label: "판매완료",
+            label: "거래완료",
             bgColor: isDarkMode ? "bg-gray-500/20" : "bg-gray-50",
             textColor: isDarkMode ? "text-gray-300" : "text-gray-600",
             hoverColor: isDarkMode ? "hover:bg-gray-500/30" : "hover:bg-gray-100",
@@ -179,22 +132,22 @@ const ProductCard = React.memo(
           break
         case "delete":
           if (confirm("정말로 이 상품을 삭제하시겠습니까?")) {
-            onDelete?.(product.id)
+            onDelete?.(product.itemid)
           }
           break
         case "complete":
           if (confirm("거래를 완료하시겠습니까?")) {
-            onComplete?.(product.id)
+            onComplete?.(product.itemid)
           }
           break
         case "status-available":
-          onStatusChange?.(product.id, "available")
+          onStatusChange?.(product.itemid, "판매중")
           break
         case "status-reserved":
-          onStatusChange?.(product.id, "reserved")
+          onStatusChange?.(product.itemid, "예약중")
           break
         case "status-sold":
-          onStatusChange?.(product.id, "sold")
+          onStatusChange?.(product.itemid, "거래완료")
           break
       }
     }
@@ -205,6 +158,16 @@ const ProductCard = React.memo(
       { value: "reserved", ...getStatusInfo("reserved") },
       { value: "sold", ...getStatusInfo("sold") },
     ]
+    useEffect(() => {
+      console.log("🧩 ProductCard props:", product);
+      console.log("  - isliked:", product.isLiked);
+      console.log("  - images:", product.itemImages);
+      console.log("  - title:", product.title);
+      console.log("  - price:", product.price);
+      console.log("  - sellerName:", product.sellerName);
+      console.log("  - location:", product.meetLocation);
+      console.log("  - regdate:", product.regdate);
+    }, [product]);
 
     return (
       <div
@@ -221,9 +184,9 @@ const ProductCard = React.memo(
         }}
       >
         <div className="relative aspect-square overflow-hidden rounded-2xl mb-4 bg-gray-100">
-          {product.images && product.images.length > 0 ? (
+          {product.itemImages && product.itemImages.length > 0 ? (
             <img
-              src={product.images[0] || "/placeholder.svg?height=300&width=300&query=product"}
+              src={product.itemImages[0] || "/placeholder.svg?height=300&width=300&query=product"}
               alt={product.title}
               className={`w-full h-full object-cover transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
                 imageLoaded ? "opacity-100 scale-100" : "opacity-0 scale-105"
@@ -249,7 +212,7 @@ const ProductCard = React.memo(
           <button
             onClick={(e) => {
               e.stopPropagation()
-              onLike?.(product.id)
+              onLike?.(product.itemid)
             }}
             className={`absolute top-3 right-3 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
               product.isLiked
@@ -340,7 +303,7 @@ const ProductCard = React.memo(
                   </button>
 
                   {/* 🔧 거래완료 버튼 - 판매중이거나 예약중일 때만 표시 */}
-                  {(product.status === "available" || product.status === "reserved") && (
+                  {(product.status === "판매중" || product.status === "예약중") && (
                     <button
                       onClick={(e) => handleMenuClick(e, "complete")}
                       className={`w-full px-4 py-3 text-left text-sm flex items-center gap-3 transition-colors ${
@@ -366,9 +329,9 @@ const ProductCard = React.memo(
             </div>
           )}
 
-          {product.images && product.images.length > 1 && (
+          {product.itemImages && product.itemImages.length > 1 && (
             <div className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-              +{product.images.length - 1}
+              +{product.itemImages.length - 1}
             </div>
           )}
         </div>
@@ -390,9 +353,6 @@ const ProductCard = React.memo(
             >
               {formatPrice(product.price)}
             </span>
-            <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${getConditionColor(product.condition)}`}>
-              {getConditionLabel(product.condition)}
-            </span>
           </div>
 
           <div
@@ -400,11 +360,11 @@ const ProductCard = React.memo(
           >
             <div className="flex items-center gap-2">
               <MapPin size={14} />
-              <span>{product.location}</span>
+              <span>{product.meetLocation?.address}</span>
             </div>
             <div className="flex items-center gap-2">
               <Clock size={14} />
-              <span>{formatTimeAgo(product.createdAt)}</span>
+              <span>{formatTimeAgo(product.regdate)}</span>
             </div>
           </div>
 
@@ -417,7 +377,7 @@ const ProductCard = React.memo(
                     : "bg-gradient-to-br from-blue-500 to-blue-700"
                 } shadow-lg`}
               >
-                <span className="text-white text-sm font-medium">{product.sellerName[0]}</span>
+
               </div>
               <div>
                 <span className={`text-sm font-medium ${isDarkMode ? "text-gray-200" : "text-gray-700"}`}>
@@ -432,23 +392,6 @@ const ProductCard = React.memo(
                     </span>
                   )}
                 </span>
-                <div className="flex items-center gap-1">
-                  <Star size={12} className="text-yellow-400 fill-current" />
-                  <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                    {product.sellerRating.toFixed(1)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className={`flex items-center gap-4 text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-              <div className="flex items-center gap-1">
-                <Eye size={12} />
-                <span>{product.views}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Heart size={12} />
-                <span>{product.likes}</span>
               </div>
             </div>
           </div>
