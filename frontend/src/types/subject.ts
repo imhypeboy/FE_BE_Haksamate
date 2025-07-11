@@ -15,3 +15,7 @@ export interface TimetableSlot {
     endtime: string;
     subject: Subject;
 }
+
+export interface TimetableData {
+    slots: TimetableSlot[];
+  }

@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Edit, Trash2, TrendingUp, Award, BookOpen } from "lucide-react"
@@ -9,6 +8,8 @@ import Modal from "react-modal"
 import Sidebar from "../sidebar/sidebar"
 import { fetchGrades, addGrade, updateGrade, deleteGrade, type Grade } from "@/lib/gradesApi"
 import { supabase } from "@/lib/supabaseClient"
+import { useSubjectSuggestions } from "./hooks/useSubjectSuggesions"
+import { showToast } from "../components/toast"
 
 const gradeToScore = {
   "A+": 4.5,
@@ -28,7 +29,7 @@ export default function GradesPage() {
   const [showModal, setShowModal] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [selectedSemester, setSelectedSemester] = useState("전체")
-  const [sidebarOpen, setSidebarOpen] = useState(true) // 사이드바 상태 추가
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [form, setForm] = useState<Grade>({
     semester: "2024-1",
     subject: "",
@@ -38,9 +39,23 @@ export default function GradesPage() {
   })
   const [userId, setUserId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isAutoAdding, setIsAutoAdding] = useState(false)
+
+  // 기존 훅 사용 (loading -> isLoading으로 변경)
+  const { suggestions: subjectSuggestions, loading: isSuggestionsLoading } = useSubjectSuggestions(userId)
+
+  // 디버깅을 위한 useEffect
+  useEffect(() => {
+    console.log("🔍 과목 추천 상태:", {
+      userId,
+      suggestions: subjectSuggestions,
+      suggestionsLength: subjectSuggestions?.length,
+      isSuggestionsLoading,
+      gradesLength: grades.length,
+    })
+  }, [userId, subjectSuggestions, isSuggestionsLoading, grades.length])
 
   useEffect(() => {
-    // 로그인 인증 및 userId 추출
     const check = async () => {
       const {
         data: { session },
@@ -67,8 +82,14 @@ export default function GradesPage() {
     try {
       const list = await fetchGrades(uid)
       setGrades(list)
+      console.log("📊 성적 목록 로드 완료:", list.length, "개")
     } catch (e) {
-      alert("성적 불러오기 오류")
+      console.error("성적 불러오기 오류:", e)
+      showToast({
+        type: "error",
+        title: "성적 불러오기 실패",
+        message: "성적을 불러오는 중 오류가 발생했습니다.",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -110,6 +131,11 @@ export default function GradesPage() {
     try {
       if (editMode && form.id) {
         await updateGrade(form, userId)
+        showToast({
+          type: "success",
+          title: "성적 수정 완료",
+          message: `${form.subject} 성적이 수정되었습니다.`,
+        })
       } else {
         await addGrade(
           {
@@ -121,12 +147,22 @@ export default function GradesPage() {
           },
           userId,
         )
+        showToast({
+          type: "success",
+          title: "성적 추가 완료",
+          message: `${form.subject} 성적이 추가되었습니다.`,
+        })
       }
       await loadGrades(userId)
       resetForm()
       setShowModal(false)
     } catch (err) {
-      alert("저장 오류")
+      console.error("성적 저장 오류:", err)
+      showToast({
+        type: "error",
+        title: "저장 실패",
+        message: "성적 저장 중 오류가 발생했습니다.",
+      })
     }
   }
 
@@ -142,8 +178,18 @@ export default function GradesPage() {
       try {
         await deleteGrade(id, userId)
         await loadGrades(userId)
-      } catch {
-        alert("삭제 오류")
+        showToast({
+          type: "success",
+          title: "성적 삭제 완료",
+          message: "성적이 삭제되었습니다.",
+        })
+      } catch (err) {
+        console.error("성적 삭제 오류:", err)
+        showToast({
+          type: "error",
+          title: "삭제 실패",
+          message: "성적 삭제 중 오류가 발생했습니다.",
+        })
       }
     }
   }
@@ -163,16 +209,71 @@ export default function GradesPage() {
     setForm({ ...form, grade, score: gradeToScore[grade as keyof typeof gradeToScore] })
   }
 
+  // 🔥 수정된 자동 추가 함수
+  const handleAutoAdd = async () => {
+    if (!userId || isSuggestionsLoading || !subjectSuggestions) return
+  
+    const addedSubjects = new Set(grades.map((g) => g.subject))
+    const availableSubjects = subjectSuggestions.filter((s) => !addedSubjects.has(s))
+  
+    if (availableSubjects.length === 0) {
+      showToast({
+        type: "info",
+        title: "추가할 과목 없음",
+        message: "추천 과목이 모두 추가되어 있습니다.",
+      })
+      return
+    }
+  
+    setIsAutoAdding(true)
+  
+    try {
+      for (const subject of availableSubjects) {
+        await addGrade(
+          {
+            semester: "2024-1",
+            subject,
+            credit: 3,
+            grade: "A+",
+            score: 4.5,
+          },
+          userId,
+        )
+      }
+  
+      await loadGrades(userId)
+  
+      showToast({
+        type: "success",
+        title: "자동 추가 완료",
+        message: `${availableSubjects.length}개 과목이 자동으로 추가되었습니다.`,
+      })
+    } catch (err) {
+      console.error("자동 추가 중 오류:", err)
+      showToast({
+        type: "error",
+        title: "자동 추가 실패",
+        message: "일괄 추가 중 오류가 발생했습니다.",
+      })
+    } finally {
+      setIsAutoAdding(false)
+    }
+  }
+  
+
   const semesters = getSemesters()
   const overallGPA = getOverallGPA()
   const filteredGrades = getFilteredGrades()
 
+  // 추가 가능한 과목 수 계산
+  const availableSubjectsCount = subjectSuggestions
+    ? subjectSuggestions.filter((s) => !grades.some((g) => g.subject === s)).length
+    : 0
+
   return (
     <div className="flex min-h-screen bg-gray-50 text-gray-900">
-      {/* 사이드바 추가 */}
       <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
-      {/* 메인 콘텐츠 */}
       <div className="flex-1 font-sans pb-12">
         <header className="bg-white text-gray-800 py-6 px-4 flex justify-between items-center shadow-sm border-b border-gray-200">
           <div className="w-10"></div>
@@ -251,6 +352,41 @@ export default function GradesPage() {
                     </option>
                   ))}
                 </select>
+
+                {/* 자동 추가 버튼 */}
+                <button
+                  onClick={handleAutoAdd}
+                  disabled={isAutoAdding || isSuggestionsLoading || availableSubjectsCount === 0}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg flex items-center shadow-sm transition-colors"
+                  title={
+                    availableSubjectsCount === 0
+                      ? "추가할 수 있는 과목이 없습니다"
+                      : `${availableSubjectsCount}개 과목을 추가할 수 있습니다`
+                  }
+                >
+                  {isAutoAdding ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      추가 중...
+                    </>
+                  ) : isSuggestionsLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      로딩 중...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-2" />
+                      자동 추가
+                      {availableSubjectsCount > 0 && (
+                        <span className="ml-1 text-xs bg-green-500 px-2 py-1 rounded-full">
+                          {availableSubjectsCount}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
+
                 <button
                   onClick={() => {
                     resetForm()

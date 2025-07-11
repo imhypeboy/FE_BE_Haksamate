@@ -3,6 +3,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Calendar, Clock, TrendingUp, CheckCircle, XCircle, AlertCircle, BookOpen } from "lucide-react"
 import { isAuthenticated } from "@/lib/auth"
+import { MockDataFactory } from '@/lib/mockData'
 
 interface AttendanceRecord {
     id: string
@@ -52,117 +53,37 @@ export default function AttendancePage() {
             router.push("/auth/login")
         }
 
-        // 더미 과목 데이터
-        const dummySubjects: Subject[] = [
-            {
-                id: "1",
-                name: "데이터베이스",
-                professor: "김교수",
-                room: "IT-301",
-                schedule: "월,수 09:00-10:30",
-                totalClasses: 15,
-                attendedClasses: 13,
-            },
-            {
-                id: "2",
-                name: "웹프로그래밍",
-                professor: "교수",
-                room: "IT-205",
-                schedule: "화,목 11:00-12:30",
-                totalClasses: 15,
-                attendedClasses: 14,
-            },
-            {
-                id: "3",
-                name: "소프트웨어공학",
-                professor: "박교수",
-                room: "IT-401",
-                schedule: "금 13:00-16:00",
-                totalClasses: 15,
-                attendedClasses: 12,
-            },
-            {
-                id: "4",
-                name: "알고리즘",
-                professor: "최교수",
-                room: "IT-302",
-                schedule: "월,수 14:00-15:30",
-                totalClasses: 15,
-                attendedClasses: 15,
-            },
-        ]
+        // 🔧 중앙 데이터 시스템에서 목업 데이터 가져오기
+        const loadAttendanceData = async () => {
+            try {
+                const [subjectsData, recordsData] = await Promise.all([
+                    MockDataFactory.withDelay(MockDataFactory.createSubjects(), 400),
+                    MockDataFactory.withDelay(MockDataFactory.createAttendanceRecords(), 600)
+                ])
 
-        // 더미 출석 데이터
-        const dummyRecords: AttendanceRecord[] = [
-            {
-                id: "1",
-                date: "2025-05-23",
-                status: "present",
-                subject: "데이터베이스",
-                time: "09:00",
-                professor: "김교수",
-                room: "IT-301",
-                week: 8,
-            },
-            {
-                id: "2",
-                date: "2025-05-23",
-                status: "late",
-                subject: "웹프로그래밍",
-                time: "11:00",
-                professor: "이교수",
-                room: "IT-205",
-                week: 8,
-            },
-            {
-                id: "3",
-                date: "2025-05-22",
-                status: "present",
-                subject: "소프트웨어공학",
-                time: "13:00",
-                professor: "박교수",
-                room: "IT-401",
-                week: 8,
-            },
-            {
-                id: "4",
-                date: "2025-05-21",
-                status: "present",
-                subject: "알고리즘",
-                time: "14:00",
-                professor: "최교수",
-                room: "IT-302",
-                week: 8,
-            },
-            {
-                id: "5",
-                date: "2025-05-20",
-                status: "absent",
-                subject: "데이터베이스",
-                time: "09:00",
-                professor: "김교수",
-                room: "IT-301",
-                week: 8,
-            },
-        ]
+                setSubjects(subjectsData)
+                setAttendanceRecords(recordsData)
 
-        setSubjects(dummySubjects)
-        setAttendanceRecords(dummyRecords)
+                // 통계 계산
+                const totalClasses = recordsData.length
+                const presentCount = recordsData.filter((r) => r.status === "present").length
+                const absentCount = recordsData.filter((r) => r.status === "absent").length
+                const lateCount = recordsData.filter((r) => r.status === "late").length
+                const attendanceRate = totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0
 
-        // 통계 계산
-        const totalClasses = dummyRecords.length
-        const presentCount = dummyRecords.filter((r) => r.status === "present").length
-        const absentCount = dummyRecords.filter((r) => r.status === "absent").length
-        const lateCount = dummyRecords.filter((r) => r.status === "late").length
-        const attendanceRate = totalClasses > 0 ? Math.round(((presentCount + lateCount) / totalClasses) * 100) : 0
+                setStats({
+                    totalClasses,
+                    presentCount,
+                    absentCount,
+                    lateCount,
+                    attendanceRate,
+                })
+            } catch (error) {
+                console.error('출석 데이터 로드 실패:', error)
+            }
+        }
 
-        setStats({
-            totalClasses,
-            presentCount,
-            absentCount,
-            lateCount,
-            attendanceRate,
-        })
+        loadAttendanceData()
     }, [router])
 
     const getStatusIcon = (status: string) => {

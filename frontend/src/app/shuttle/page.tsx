@@ -3,6 +3,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Bus, MapPin, Clock, Navigation, AlertCircle, Users, Route, Zap } from "lucide-react"
 import { isAuthenticated } from "@/lib/auth"
+import { MockDataFactory, type MockBusRoute, type MockBusStop } from '@/lib/mockData'
 
 interface BusRoute {
     id: string
@@ -36,70 +37,47 @@ interface BusInfo {
 
 export default function ShuttlePage() {
     const router = useRouter()
-    const [routes] = useState<BusRoute[]>([
-        {
-            id: "1",
-            name: "본관-기숙사",
-            color: "blue",
-            description: "본관에서 기숙사까지 운행",
-            totalStops: 5,
-            estimatedTime: 15,
-        },
-        {
-            id: "2",
-            name: "정문-후문",
-            color: "green",
-            description: "정문에서 후문까지 캠퍼스 순환",
-            totalStops: 8,
-            estimatedTime: 25,
-        },
-        {
-            id: "3",
-            name: "캠퍼스순환",
-            color: "purple",
-            description: "캠퍼스 전체 순환 노선",
-            totalStops: 12,
-            estimatedTime: 35,
-        },
-    ])
+    const [routes, setRoutes] = useState<MockBusRoute[]>([])
+    const [stops, setStops] = useState<MockBusStop[]>([])
+    const [selectedRoute, setSelectedRoute] = useState<string>("1")
+    const [selectedTab, setSelectedTab] = useState<"schedule" | "map">("schedule")
+    const [sidebarOpen, setSidebarOpen] = useState(false)
+    const [showProfileModal, setShowProfileModal] = useState(false)
+    const [expandedRoute, setExpandedRoute] = useState<string | null>(null)
 
-    const [stops] = useState<BusStop[]>([
-        {
-            id: "1",
-            name: "본관",
-            location: "행정관 앞",
-            facilities: ["벤치", "지붕", "WIFI"],
-            waitingPassengers: 8,
-        },
-        {
-            id: "2",
-            name: "도서관",
-            location: "중앙도서관",
-            facilities: ["벤치", "지붕", "WIFI", "자판기"],
-            waitingPassengers: 12,
-        },
-        {
-            id: "3",
-            name: "기숙사",
-            location: "생활관 정류장",
-            facilities: ["벤치", "지붕", "WIFI", "편의점"],
-            waitingPassengers: 15,
-        },
-        {
-            id: "4",
-            name: "정문",
-            location: "정문 게이트",
-            facilities: ["벤치", "지붕"],
-            waitingPassengers: 6,
-        },
-        {
-            id: "5",
-            name: "후문",
-            location: "후문 주차장",
-            facilities: ["벤치", "WIFI"],
-            waitingPassengers: 4,
-        },
-    ])
+    // 데스크톱에서는 사이드바 기본 열림
+    useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth >= 768) {
+                setSidebarOpen(true)
+            } else {
+                setSidebarOpen(false)
+            }
+        }
+
+        handleResize()
+        window.addEventListener("resize", handleResize)
+        return () => window.removeEventListener("resize", handleResize)
+    }, [])
+
+    useEffect(() => {
+        // 🔧 중앙 데이터 시스템에서 셔틀 데이터 가져오기
+        const loadShuttleData = async () => {
+            try {
+                const [routesData, stopsData] = await Promise.all([
+                    MockDataFactory.withDelay(MockDataFactory.createBusRoutes(), 400),
+                    MockDataFactory.withDelay(MockDataFactory.createBusStops(), 300)
+                ])
+
+                setRoutes(routesData)
+                setStops(stopsData)
+            } catch (error) {
+                console.error('셔틀 데이터 로드 실패:', error)
+            }
+        }
+
+        loadShuttleData()
+    }, [])
 
     const [busInfo, setBusInfo] = useState<BusInfo[]>([
         {
@@ -140,7 +118,6 @@ export default function ShuttlePage() {
         },
     ])
 
-    const [selectedRoute, setSelectedRoute] = useState("1")
     const [selectedStop, setSelectedStop] = useState("1")
     const [notifications, setNotifications] = useState({
         arrivalAlert: true,

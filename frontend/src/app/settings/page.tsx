@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Sidebar from "../sidebar/sidebar"
+import { useAuth } from "@/hooks/useAuth"
 import {
   Bell,
   User,
@@ -17,14 +18,29 @@ import {
   Languages,
   Moon,
   Sun,
+  Camera,
+  X,
 } from "lucide-react"
+import { fetchProfile, updateProfile } from "@/lib/profile"
+import { supabase } from "@/lib/supabaseClient"
 
 export default function SettingsPage() {
   const router = useRouter()
+  const { user, isLoading } = useAuth()
   const [activeTab, setActiveTab] = useState("profile")
   const [saving, setSaving] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [profileImage, setProfileImage] = useState<string | undefined>(undefined)
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 인증 확인 및 리다이렉트
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push("/auth/login")
+    }
+  }, [user, isLoading, router])
 
   // 데스크톱에서는 사이드바 기본 열림
   useEffect(() => {
@@ -45,15 +61,60 @@ export default function SettingsPage() {
   const currentYear = new Date().getFullYear()
   const admissionYears = Array.from({ length: 10 }, (_, i) => String(currentYear - i))
 
-  // 프로필 상태
+  // 학과 리스트
+  const departments = [
+    "간호학과",
+    "건축학과",
+    "경영학과",
+    "글로벌한국학과",
+    "데이터클라우드공학과",
+    "동물자원과학과",
+    "바이오융합공학과",
+    "보건관리학과",
+    "물리치료학과",
+    "미래융합자유전공학부",
+    "사회복지학과",
+    "상담심리학과",
+    "신학과",
+    "식품영양학과",
+    "아트앤디자인학과",
+    "약학과",
+    "영어영문학과",
+    "유아교육과",
+    "음악학과",
+    "인공지능융합학부",
+    "창의융합자유전공학부",
+    "체육학과",
+    "컴퓨터공학부",
+    "항공관광외국어학부",
+    "환경디자인원예학과",
+    "화학생명과학과"
+  ]
+
+  // 프로필 상태 - 로그인한 사용자 정보로 초기화
   const [profileSettings, setProfileSettings] = useState({
-    name: "홍길동",
-    email: "student@university.ac.kr",
-    department: "컴퓨터공학과",
-    studentId: "2021123456",
-    year: "2021",
-    phone: "010-1234-5678",
+    name: "",
+    email: "",
+    department: "",
+    studentId: "",
+    year: "",
   })
+
+  // DB에서 프로필 정보 불러오기
+  useEffect(() => {
+    if (user?.id) {
+      fetchProfile(user.id).then(data => {
+        setProfileSettings({
+          name: data.name || "",
+          email: data.email || "",
+          department: data.department || "",
+          studentId: data.student_id || "",
+          year: data.year || "",
+        })
+        setProfileImage(data.profile_image_url || undefined)
+      })
+    }
+  }, [user])
 
   // 알림 설정
   const [notificationSettings, setNotificationSettings] = useState({
@@ -82,11 +143,19 @@ export default function SettingsPage() {
     dataEncryption: true,
   })
 
+  // 저장 버튼 클릭 시 DB에 저장
   const handleSave = async () => {
+    if (!user) return;
     setSaving(true)
     try {
-      // 실제 저장 로직
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await updateProfile(user.id, {
+        name: profileSettings.name,
+        email: profileSettings.email,
+        department: profileSettings.department,
+        studentId: profileSettings.studentId,
+        year: profileSettings.year,
+        profile_image_url: profileImage,
+      })
       alert("설정이 저장되었습니다.")
     } catch (e) {
       alert("설정 저장에 실패했습니다.")
@@ -94,10 +163,102 @@ export default function SettingsPage() {
     setSaving(false)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.confirm("로그아웃 하시겠습니까?")) {
-      router.push("/")
+      try {
+        await supabase.auth.signOut()
+        router.push("/auth/login")
+      } catch (error) {
+        console.error("로그아웃 실패:", error)
+        alert("로그아웃 중 오류가 발생했습니다.")
+      }
     }
+  }
+
+  // 프로필 사진 업로드 처리
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // 파일 크기 체크 (5MB 제한)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("파일 크기는 5MB 이하여야 합니다.")
+      return
+    }
+
+    // 파일 타입 체크
+    if (!file.type.startsWith('image/')) {
+      alert("이미지 파일만 업로드 가능합니다.")
+      return
+    }
+
+    setIsUploading(true)
+
+    try {
+      // 파일명 생성 (타임스탬프 + 원본 확장자)
+      const timestamp = Date.now()
+      const fileExtension = file.name.split('.').pop()
+      const fileName = `profile_${timestamp}.${fileExtension}`
+
+      // FormData 생성
+      const formData = new FormData()
+      formData.append('image', file)
+      formData.append('fileName', fileName)
+
+      // 서버에 이미지 업로드
+      const response = await fetch('/api/upload-profile-image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error('이미지 업로드에 실패했습니다.')
+      }
+
+      const result = await response.json()
+
+      // 성공 시 이미지 경로 설정
+      setProfileImage(`/profile_img/${fileName}`)
+
+    } catch (error) {
+      console.error('이미지 업로드 오류:', error)
+      alert('이미지 업로드에 실패했습니다.')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  // 프로필 사진 제거
+  const handleRemoveImage = async () => {
+    if (profileImage && profileImage.startsWith('/profile_img/')) {
+      try {
+        // 서버에서 파일 삭제 요청
+        const fileName = profileImage.split('/').pop()
+        const response = await fetch('/api/delete-profile-image', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ fileName }),
+        })
+
+        if (!response.ok) {
+          console.error('파일 삭제 실패')
+        }
+      } catch (error) {
+        console.error('파일 삭제 오류:', error)
+      }
+    }
+
+    setProfileImage(undefined)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // 파일 선택 다이얼로그 열기
+  const handleSelectImage = () => {
+    fileInputRef.current?.click()
   }
 
   const tabs = [
@@ -106,6 +267,18 @@ export default function SettingsPage() {
     { id: "general", label: "일반 설정", icon: Globe },
     { id: "security", label: "보안 설정", icon: Lock },
   ]
+
+  // 로딩 중이거나 사용자가 없으면 로딩 화면 표시
+  if (isLoading || !user) {
+    return (
+        <div className="min-h-screen bg-[#FBFBFB] flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">로딩 중...</p>
+          </div>
+        </div>
+    )
+  }
 
   return (
       <div className="min-h-screen bg-[#FBFBFB] text-gray-900 md:flex">
@@ -117,13 +290,7 @@ export default function SettingsPage() {
               className="bg-white border-b border-gray-200 py-4 px-4 flex justify-between items-center shadow-sm">
             <div className="w-10 md:hidden"></div>
             <h1 className="text-xl font-bold text-gray-800 flex-1 text-center">설정</h1>
-            <button
-                onClick={() => setShowProfileModal(true)}
-                className="w-10 h-10 rounded-full bg-[#C4D9FF] hover:bg-[#B0CCFF] flex items-center justify-center transition-colors"
-                aria-label="프로필"
-            >
-              <UserIcon className="h-5 w-5 text-gray-700"/>
-            </button>
+            {/* 프로필 버튼 삭제됨 */}
           </header>
 
           <div className="max-w-6xl mx-auto py-8 px-4">
@@ -179,6 +346,63 @@ export default function SettingsPage() {
                       </div>
 
                       <div className="space-y-6">
+                        {/* 프로필 사진 섹션 */}
+                        <div className="flex flex-col items-center space-y-4">
+                          <div className="relative">
+                            <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 border-4 border-gray-200">
+                              {profileImage ? (
+                                  <img
+                                      src={profileImage}
+                                      alt="프로필 사진"
+                                      className="w-full h-full object-cover"
+                                  />
+                              ) : (
+                                  <div className="w-full h-full bg-[#E8F9FF] flex items-center justify-center">
+                                    <UserIcon className="h-12 w-12 text-gray-400" />
+                                  </div>
+                              )}
+                            </div>
+                            {isUploading && (
+                                <div className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center">
+                                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                                </div>
+                            )}
+                            {profileImage && (
+                                <button
+                                    onClick={handleRemoveImage}
+                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                            )}
+                          </div>
+                          <div className="flex space-x-2">
+                            <button
+                                onClick={handleSelectImage}
+                                disabled={isUploading}
+                                className="px-4 py-2 bg-[#C4D9FF] hover:bg-[#B0CCFF] text-gray-800 rounded-lg flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <Camera className="h-4 w-4" />
+                              <span>사진 선택</span>
+                            </button>
+                            {profileImage && (
+                                <button
+                                    onClick={handleRemoveImage}
+                                    className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors"
+                                >
+                                  제거
+                                </button>
+                            )}
+                          </div>
+                          <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              className="hidden"
+                          />
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <label
@@ -198,12 +422,10 @@ export default function SettingsPage() {
                                 className="block text-sm font-medium text-gray-700 mb-2">이메일</label>
                             <input
                                 type="email"
-                                className="w-full border border-gray-300 rounded-xl px-3 py-3 bg-white text-gray-900 focus:border-blue-500 focus:outline-none"
+                                className="w-full border border-gray-300 rounded-xl px-3 py-3 bg-gray-100 text-gray-600 cursor-not-allowed"
                                 value={profileSettings.email}
-                                onChange={(e) => setProfileSettings({
-                                  ...profileSettings,
-                                  email: e.target.value
-                                })}
+                                readOnly
+                                disabled
                             />
                           </div>
                         </div>
@@ -212,15 +434,21 @@ export default function SettingsPage() {
                           <div>
                             <label
                                 className="block text-sm font-medium text-gray-700 mb-2">학과</label>
-                            <input
-                                type="text"
+                            <select
                                 className="w-full border border-gray-300 rounded-xl px-3 py-3 bg-white text-gray-900 focus:border-blue-500 focus:outline-none"
                                 value={profileSettings.department}
                                 onChange={(e) => setProfileSettings({
                                   ...profileSettings,
                                   department: e.target.value
                                 })}
-                            />
+                            >
+                              <option value="">학과를 선택하세요</option>
+                              {departments.map((dept) => (
+                                  <option key={dept} value={dept}>
+                                    {dept}
+                                  </option>
+                              ))}
+                            </select>
                           </div>
                           <div>
                             <label
@@ -233,6 +461,7 @@ export default function SettingsPage() {
                                   year: e.target.value
                                 })}
                             >
+                              <option value="">입학년도를 선택하세요</option>
                               {admissionYears.map((year) => (
                                   <option key={year} value={year}>
                                     {year}년
@@ -248,24 +477,16 @@ export default function SettingsPage() {
                                 className="block text-sm font-medium text-gray-700 mb-2">학번</label>
                             <input
                                 type="text"
-                                className="w-full border border-gray-300 rounded-xl px-3 py-3 bg-white text-gray-900 focus:border-blue-500 focus:outline-none"
+                                placeholder="학번을 입력하세요"
+                                className={`w-full border border-gray-300 rounded-xl px-3 py-3 focus:border-blue-500 focus:outline-none ${
+                                    profileSettings.studentId
+                                        ? 'bg-white text-gray-900'
+                                        : 'bg-gray-50 text-gray-500'
+                                }`}
                                 value={profileSettings.studentId}
                                 onChange={(e) => setProfileSettings({
                                   ...profileSettings,
                                   studentId: e.target.value
-                                })}
-                            />
-                          </div>
-                          <div>
-                            <label
-                                className="block text-sm font-medium text-gray-700 mb-2">전화번호</label>
-                            <input
-                                type="tel"
-                                className="w-full border border-gray-300 rounded-xl px-3 py-3 bg-white text-gray-900 focus:border-blue-500 focus:outline-none"
-                                value={profileSettings.phone}
-                                onChange={(e) => setProfileSettings({
-                                  ...profileSettings,
-                                  phone: e.target.value
                                 })}
                             />
                           </div>
@@ -633,55 +854,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* 프로필 모달 */}
-          {showProfileModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl max-w-lg w-full p-6">
-                  <div className="flex flex-col items-center">
-                    <div
-                        className="w-24 h-24 rounded-full bg-[#E8F9FF] flex items-center justify-center mb-4">
-                      <UserIcon className="h-12 w-12 text-gray-700"/>
-                    </div>
-                    <h2 className="text-xl font-bold mb-1 text-gray-900">{profileSettings.name}</h2>
-                    <p className="text-gray-500 mb-6">
-                      {profileSettings.department} • {currentYear - Number.parseInt(profileSettings.year) + 1}학년
-                    </p>
-
-                    <div className="w-full space-y-3 mb-6">
-                      <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
-                        <span className="font-medium text-gray-700">학번</span>
-                        <span className="text-gray-600">{profileSettings.studentId}</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
-                        <span className="font-medium text-gray-700">이메일</span>
-                        <span className="text-gray-600">{profileSettings.email}</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
-                        <span className="font-medium text-gray-700">전화번호</span>
-                        <span className="text-gray-600">{profileSettings.phone}</span>
-                      </div>
-                    </div>
-
-                    <div className="w-full space-y-3">
-                      <button
-                          className="w-full py-3 px-4 bg-[#C4D9FF] hover:bg-[#B0CCFF] text-gray-800 rounded-xl transition-colors font-medium">
-                        프로필 편집
-                      </button>
-                      <button
-                          className="w-full py-3 px-4 bg-[#C5BAFF] hover:bg-[#B8ABFF] text-gray-800 rounded-xl transition-colors font-medium">
-                        계정 관리
-                      </button>
-                      <button
-                          onClick={() => setShowProfileModal(false)}
-                          className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl transition-colors font-medium"
-                      >
-                        닫기
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-          )}
+          {/* 프로필 모달 삭제됨 */}
         </div>
       </div>
   )

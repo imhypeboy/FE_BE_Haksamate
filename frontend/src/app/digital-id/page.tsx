@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 //import { QRCodeSVG } from 'qrcode.react';
 import { CreditCard, User, Calendar, MapPin, Clock, Shield, Smartphone, Download, Share2, Wallet, TrendingUp } from 'lucide-react';
+import { MockDataFactory, type MockUsageHistory, type MockUser } from '@/lib/mockData'
 
 interface StudentInfo {
     id: string;
@@ -39,52 +40,58 @@ export default function DigitalIDPage() {
     const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
     const [isFlipped, setIsFlipped] = useState(false);
     const [qrData, setQrData] = useState('');
-    const [usageHistory, setUsageHistory] = useState<UsageHistory[]>([]);
+    const [usageHistory, setUsageHistory] = useState<MockUsageHistory[]>([]);
     const [wallet, setWallet] = useState<DigitalWallet | null>(null);
     const [activeTab, setActiveTab] = useState<'card' | 'history' | 'wallet'>('card');
 
     useEffect(() => {
-        // 더미 학생 정보
-        const dummyStudent: StudentInfo = {
-            id: '1',
-            name: '김학생',
-            studentNumber: '2021123456',
-            department: '컴퓨터공학과',
-            grade: 3,
-            photo: '/api/placeholder/150/200',
-            issueDate: '2021-03-01',
-            expiryDate: '2025-02-28',
-            email: 'student@university.ac.kr',
-            phone: '010-1234-5678',
-            address: '서울시 강남구 학교로 123',
-            emergencyContact: '010-9876-5432'
-        };
+        // 🔧 중앙 데이터 시스템에서 데이터 가져오기
+        const loadDigitalIdData = async () => {
+            try {
+                const [users, history] = await Promise.all([
+                    MockDataFactory.withDelay(MockDataFactory.createUsers(), 300),
+                    MockDataFactory.withDelay(MockDataFactory.createUsageHistory(), 500)
+                ])
 
-        const dummyHistory: UsageHistory[] = [
-            { id: '1', service: '도서관 출입', location: '중앙도서관', timestamp: '2025-05-23 14:30', type: 'library' },
-            { id: '2', service: '학식 결제', location: '학생회관 식당', timestamp: '2025-05-23 12:15', type: 'payment', amount: 6000 },
-            { id: '3', service: '출석 체크', location: 'IT-301 (웹프로그래밍)', timestamp: '2025-05-23 09:00', type: 'attendance' },
-            { id: '4', service: '건물 출입', location: 'IT관', timestamp: '2025-05-23 08:45', type: 'entry' },
-            { id: '5', service: '프린터 이용', location: '도서관 2층', timestamp: '2025-05-22 16:20', type: 'payment', amount: 500 },
-            { id: '6', service: '카페 결제', location: '학생회관 카페', timestamp: '2025-05-22 15:30', type: 'payment', amount: 4500 },
-            { id: '7', service: '체육관 출입', location: '종합체육관', timestamp: '2025-05-22 14:00', type: 'entry' }
-        ];
+                // 첫 번째 사용자를 현재 학생으로 사용
+                const currentUser = users[0]
+                
+                const dummyStudent: StudentInfo = {
+                    id: currentUser.id,
+                    name: currentUser.name,
+                    studentNumber: currentUser.studentNumber,
+                    department: currentUser.department,
+                    grade: currentUser.year,
+                    photo: '/api/placeholder/150/200',
+                    issueDate: '2021-03-01',
+                    expiryDate: '2025-02-28',
+                    email: currentUser.email,
+                    phone: '010-1234-5678',
+                    address: '서울시 강남구 학교로 123',
+                    emergencyContact: '010-9876-5432'
+                }
 
-        const dummyWallet: DigitalWallet = {
-            balance: 45000,
-            lastRecharge: '2025-05-20',
-            monthlySpent: 89000
-        };
+                const dummyWallet: DigitalWallet = {
+                    balance: 45000,
+                    lastRecharge: '2025-05-20',
+                    monthlySpent: 89000
+                }
 
-        setStudentInfo(dummyStudent);
-        setUsageHistory(dummyHistory);
-        setWallet(dummyWallet);
+                setStudentInfo(dummyStudent)
+                setUsageHistory(history)
+                setWallet(dummyWallet)
 
-        setQrData(JSON.stringify({
-            studentNumber: dummyStudent.studentNumber,
-            name: dummyStudent.name,
-            timestamp: Date.now()
-        }));
+                setQrData(JSON.stringify({
+                    studentNumber: dummyStudent.studentNumber,
+                    name: dummyStudent.name,
+                    timestamp: Date.now()
+                }))
+            } catch (error) {
+                console.error('디지털 ID 데이터 로드 실패:', error)
+            }
+        }
+
+        loadDigitalIdData()
     }, []);
 
     const getServiceIcon = (type: string) => {

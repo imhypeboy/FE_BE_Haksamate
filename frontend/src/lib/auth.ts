@@ -61,3 +61,14 @@ export async function logoutUser() {
     if (error) throw error;
     return true;
 }
+
+// 비밀번호 재설정 이메일 전송
+export async function sendPasswordResetEmail(email: string) {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: process.env.NEXT_PUBLIC_SITE_URL
+      ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/update-password`
+      : undefined
+  })
+  if (error) throw error
+  return data
+}

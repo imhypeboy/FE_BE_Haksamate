@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Sidebar from "../sidebar/sidebar"
 import { UserIcon, Utensils, Clock, MapPin, Star, Heart, DollarSign, Zap, Users, Calendar } from "lucide-react"
+import { MockDataFactory, type MockDailyMenu } from '@/lib/mockData'
 
 interface MenuItem {
     id: string
@@ -43,7 +44,7 @@ interface CafeteriaInfo {
 
 export default function CafeteriaPage() {
     const router = useRouter()
-    const [weeklyMenu, setWeeklyMenu] = useState<DailyMenu[]>([])
+    const [weeklyMenu, setWeeklyMenu] = useState<MockDailyMenu[]>([])
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0])
     const [selectedMeal, setSelectedMeal] = useState<"breakfast" | "lunch" | "dinner">("lunch")
     const [selectedCafeteria, setSelectedCafeteria] = useState("main")
@@ -98,111 +99,20 @@ export default function CafeteriaPage() {
     ]
 
     useEffect(() => {
-        const dummyMenu: DailyMenu[] = [
-            {
-                date: "2025-01-20",
-                breakfast: [
-                    {
-                        id: "1",
-                        name: "김치찌개",
-                        price: 4000,
-                        category: "main",
-                        calories: 320,
-                        rating: 4.5,
-                        isSpicy: true,
-                    },
-                    {
-                        id: "2",
-                        name: "계란말이",
-                        price: 2000,
-                        category: "side",
-                        calories: 180,
-                        rating: 4.2,
-                    },
-                    {
-                        id: "3",
-                        name: "미역국",
-                        price: 1500,
-                        category: "soup",
-                        calories: 45,
-                        rating: 3.8,
-                    },
-                ],
-                lunch: [
-                    {
-                        id: "4",
-                        name: "불고기덮밥",
-                        price: 6000,
-                        category: "main",
-                        calories: 650,
-                        rating: 4.7,
-                    },
-                    {
-                        id: "5",
-                        name: "잡채",
-                        price: 3000,
-                        category: "side",
-                        calories: 220,
-                        rating: 4.3,
-                    },
-                    {
-                        id: "6",
-                        name: "된장국",
-                        price: 2000,
-                        category: "soup",
-                        calories: 80,
-                        rating: 4.0,
-                    },
-                    {
-                        id: "7",
-                        name: "비빔밥",
-                        price: 5500,
-                        category: "main",
-                        calories: 580,
-                        rating: 4.4,
-                        isVegetarian: true,
-                    },
-                ],
-                dinner: [
-                    {
-                        id: "8",
-                        name: "치킨까스",
-                        price: 7000,
-                        category: "main",
-                        calories: 580,
-                        rating: 4.6,
-                    },
-                    {
-                        id: "9",
-                        name: "샐러드",
-                        price: 2500,
-                        category: "side",
-                        calories: 120,
-                        rating: 4.1,
-                        isVegetarian: true,
-                    },
-                    {
-                        id: "10",
-                        name: "콘크림 스프",
-                        price: 2000,
-                        category: "soup",
-                        calories: 150,
-                        rating: 4.2,
-                    },
-                ],
-                specialMenu: [
-                    {
-                        id: "11",
-                        name: "오늘의 특선 - 갈비탕",
-                        price: 8000,
-                        category: "main",
-                        calories: 720,
-                        rating: 4.9,
-                    },
-                ],
-            },
-        ]
-        setWeeklyMenu(dummyMenu)
+        // 🔧 중앙 데이터 시스템에서 메뉴 데이터 가져오기
+        const loadMenuData = async () => {
+            try {
+                const menuData = await MockDataFactory.withDelay(
+                    MockDataFactory.createCafeteriaMenu(), 
+                    500
+                )
+                setWeeklyMenu(menuData)
+            } catch (error) {
+                console.error('메뉴 데이터 로드 실패:', error)
+            }
+        }
+
+        loadMenuData()
     }, [])
 
     const todayMenu = weeklyMenu.find((menu) => menu.date === selectedDate)

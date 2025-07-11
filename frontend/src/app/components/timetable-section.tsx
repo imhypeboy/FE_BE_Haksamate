@@ -1,7 +1,8 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { Calendar, Clock, Sparkles } from "lucide-react"
+import { Calendar, Clock, Sparkles, X } from "lucide-react"
+import { useState } from "react"
 import { TimetableSkeletonRow } from "./loading-skeleton"
 import type { Subject } from "@/hooks/useSubjects"
 
@@ -33,12 +34,13 @@ export function TimetableSection({
   getSubjectColor,
   onGenerate,
 }: TimetableSectionProps) {
+  const [selected, setSelected] = useState<Subject | null>(null)
   return (
     <motion.div
       initial={{ x: 50, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ delay: 0.5, duration: 0.8 }}
-      className="xl:w-[55%]"
+      className="w-full"
     >
       <div className="backdrop-blur-xl bg-white/40 rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-2xl border border-white/30 hover:bg-white/50 transition-all duration-500">
         <div className="flex items-center justify-between mb-6 sm:mb-8 flex-wrap gap-4">
@@ -81,7 +83,7 @@ export function TimetableSection({
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
-                  <span className="hidden sm:inline">✨ AI 시간표 자동 생성</span>
+                  <span className="hidden sm:inline">✨ 시간표 자동 생성</span>
                   <span className="sm:hidden">✨ 자동 생성</span>
                 </>
               )}
@@ -155,6 +157,7 @@ export function TimetableSection({
                                       damping: 30,
                                       delay: i * 0.1,
                                     }}
+                                    onClick={() => setSelected(subject)}
                                     className={`${getSubjectColor(subject.name)} text-white text-[10px] sm:text-xs font-bold px-1 sm:px-3 py-1 sm:py-2 rounded-lg sm:rounded-xl shadow-lg mb-1 last:mb-0 cursor-pointer border border-white/20`}
                                     title={`${subject.name} (${subject.starttime}~${subject.endtime})`}
                                   >
@@ -201,6 +204,52 @@ export function TimetableSection({
           </motion.div>
         )}
       </div>
+
+      {/* subject info modal */}
+      {selected && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setSelected(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            transition={{ type: "spring", duration: 0.4 }}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative mb-6">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-emerald-400/40 to-teal-500/40 blur-xl opacity-70 -z-10" />
+              <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight text-center capitalize">
+                {selected.name}
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-[auto_1fr] gap-y-3 gap-x-4 text-[15px] text-gray-800">
+              <span className="font-semibold">요일</span>
+              <span className="uppercase tracking-wide">{selected.dayofweek}</span>
+
+              <span className="font-semibold">시간</span>
+              <span>{selected.starttime} ~ {selected.endtime}</span>
+
+              <span className="font-semibold">구분</span>
+              <span>{selected.required ? "필수" : "선택"}</span>
+              {/* 추가 필드: 강의실, 교수 등 */}
+            </div>
+
+            <button
+              onClick={() => setSelected(null)}
+              className="mt-8 w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-xl font-medium shadow-lg"
+            >
+              닫기
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
     </motion.div>
   )
 }
