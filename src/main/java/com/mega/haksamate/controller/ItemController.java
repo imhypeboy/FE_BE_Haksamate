@@ -1,5 +1,6 @@
 package com.mega.haksamate.controller;
 
+import com.mega.haksamate.dto.ItemCompleteDTO;
 import com.mega.haksamate.dto.ItemRegisterRequestDTO;
 import com.mega.haksamate.dto.ItemResponseDTO;
 import com.mega.haksamate.dto.ItemSuggestionDTO;
@@ -73,6 +74,7 @@ public class ItemController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, String>> deleteItem(@PathVariable Long id) {
         itemService.deleteItem(id);
+        
         Map<String, String> response = new HashMap<>();
         response.put("message", "게시글이 삭제되었습니다.");
         return ResponseEntity.ok(response);
@@ -89,23 +91,28 @@ public class ItemController {
         response.put("message", "게시글 상태가 성공적으로 변경되었습니다.");
         return ResponseEntity.ok(response);
     }
+    @PatchMapping("/{itemId}/reserve")
+    public ResponseEntity<?> reserveItemToBuyer(
+            @PathVariable Long itemId,
+            @RequestBody Map<String, String> body
+    ) {
+        UUID buyerId = UUID.fromString(body.get("buyerId"));
 
+        itemService.reserveItem(itemId, buyerId);
+
+        return ResponseEntity.ok(Map.of("message", "상품이 예약 처리되었습니다."));
+    }
     // ✅ 거래 완료 처리
     @PostMapping("/{itemId}/complete")
     public ResponseEntity<?> completeItemDeal(
-            @PathVariable Long itemId,
-            @RequestParam Long chatRoomId
+            @PathVariable Long itemId
     ) {
-        System.out.println("📩 거래 완료 요청: itemId=" + itemId + ", chatRoomId=" + chatRoomId);
+        System.out.println("📩 거래 완료 요청: itemId=" + itemId );
 
         Item item = itemRepository.findById(itemId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 상품이 없습니다."));
 
-        ChatRoom chatRoom = chatRoomRepository.findById(chatRoomId)
-                .orElseThrow(() -> new IllegalArgumentException("해당 채팅방이 없습니다."));
-
         // 구매자 등록 및 상태 변경
-        item.setBuyer(chatRoom.getChatUsr1Id());
         item.setStatus(Item.Status.거래완료);
         item.setCompletedDate(LocalDateTime.now());
 
@@ -113,10 +120,14 @@ public class ItemController {
 
         return ResponseEntity.ok("거래 완료 처리되었습니다.");
     }
-
+    @GetMapping("/{itemId}/complete-info")
+    public ResponseEntity<ItemCompleteDTO> getItemCompleteInfo(@PathVariable Long itemId) {
+        Item item = itemService.getCompletedItemByItemId(itemId); // ✅ 단수
+        return ResponseEntity.ok(ItemCompleteDTO.from(item));
+    }
     // ✨ 구매자 거래완료 목록
     @GetMapping("/completed")
-    public ResponseEntity<List<ItemResponseDTO>> getCompletedItemsByBuyer(@RequestParam UUID userId) {
+    public ResponseEntity<List<ItemCompleteDTO>> getCompletedItemsByBuyer(@RequestParam UUID userId) {
         return ResponseEntity.ok(itemService.getCompletedItemsByBuyer(userId));
     }
 

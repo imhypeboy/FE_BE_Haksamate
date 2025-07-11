@@ -17,4 +17,7 @@ public interface ItemTransactionRepository extends JpaRepository<ItemTransaction
 
 
     List<ItemTransaction> findAllByItem_ItemidAndProfile_IdAndDistinctSellerNot(Long itemId, UUID userId, UUID userId1);
+
+    List<ItemTransaction> findAllByItem_ItemidAndDistinctSeller(Long itemId, UUID sellerId);
+
 }

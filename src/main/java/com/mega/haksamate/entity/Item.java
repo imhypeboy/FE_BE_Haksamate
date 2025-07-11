@@ -71,4 +71,12 @@ public class Item {
     public enum Status {
         판매중, 예약중, 거래완료
     }
+    @OneToMany(mappedBy = "item", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Report> reports = new ArrayList<>();
+
+    @OneToMany(mappedBy = "item", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ItemLike> itemLikes = new ArrayList<>();
+
+    @OneToMany(mappedBy = "item", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ItemTransaction> itemTransactions = new ArrayList<>();
 }

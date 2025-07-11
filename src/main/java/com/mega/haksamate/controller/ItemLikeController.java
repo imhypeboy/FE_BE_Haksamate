@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -47,4 +48,5 @@ public class ItemLikeController {
     public ResponseEntity<List<FavoriteItemDTO>> myFavorites(@RequestParam UUID userId) {
         return ResponseEntity.ok(itemLikeService.getUserFavorites(userId));
     }
+
 }

@@ -12,9 +12,10 @@ interface AddProductModalProps {
   onCreate: (data: CreateProductRequest, images: File[]) => Promise<void>
   isDarkMode: boolean
   kakaoMapState: KakaoMapState
+  onCreated?: ()=>void
 }
 
-const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClose, onCreate, isDarkMode, kakaoMapState }) => {
+const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClose, onCreate, isDarkMode, kakaoMapState,onCreated}) => {
   const {user}=useAuth()
   const [formData, setFormData] = useState<CreateProductRequest>({
   title: "",
@@ -116,6 +117,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClose, onCr
       try {
         setIsLoading(true)
         await onCreate({ ...formData, sellerId: user?.id ||""}, images)
+        onCreated?.()
         resetForm()
         onClose()
       } catch (error) {

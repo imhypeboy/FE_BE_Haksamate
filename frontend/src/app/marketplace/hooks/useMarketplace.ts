@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react"
 import type { Product, CreateProductRequest, UpdateProductRequest, SearchFilters } from "../types"
-
+import {useChat,useChatRooms}from "@/hooks/useChat"
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
 export const useMarketplace = () => {
@@ -326,18 +326,32 @@ export const useMarketplace = () => {
     }
   }, [])
 
-  const completeTransaction = useCallback(
-    async (itemId: number) => {
-      try {
-        await updateProductStatus(itemId, "거래완료")
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "거래 완료 처리에 실패했습니다."
-        setError(errorMessage)
-        throw new Error(errorMessage)
+
+  const completeTransaction = useCallback(async (itemId: number) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/items/${itemId}/complete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error("거래 완료 처리에 실패했습니다.")
       }
-    },
-    [updateProductStatus],
-  )
+
+      // 상품 목록에서 해당 상품의 상태를 거래완료로 업데이트
+      setProducts((prev) =>
+        prev.map((product) => (product.itemid === itemId ? { ...product, status: "거래완료" as const } : product)),
+      )
+
+      return await response.text() // "거래 완료 처리되었습니다." 메시지
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "거래 완료 처리에 실패했습니다."
+      setError(errorMessage)
+      throw new Error(errorMessage)
+    }
+  }, [])
 
   return {
     products,

@@ -1,12 +1,10 @@
 package com.mega.haksamate.service;
 
-import com.mega.haksamate.dto.ItemRegisterRequestDTO;
-import com.mega.haksamate.dto.ItemResponseDTO;
-import com.mega.haksamate.dto.ItemSuggestionDTO;
-import com.mega.haksamate.dto.MeetLocationDTO;
+import com.mega.haksamate.dto.*;
 import com.mega.haksamate.entity.*;
 import com.mega.haksamate.repository.*;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,6 +28,7 @@ public class ItemService {
 
     private final ItemTransactionRepository itemTransactionRepository;
     private final ItemLikeRepository itemLikeRepository;
+    private final ReportRepository reportRepository;
 
     @PersistenceContext
     private EntityManager em;
@@ -214,7 +213,8 @@ public class ItemService {
     }
 
     public void deleteItem(Long itemId) {
-        itemLikeRepository.deleteByItemId(itemId);
+        reportRepository.deleteById(itemId);
+
 
         Item item = itemRepository.findById(itemId)
                 .orElseThrow(() -> new NoSuchElementException("해당 ID의 게시글이 존재하지 않습니다."));
@@ -239,12 +239,15 @@ public class ItemService {
         }
     }
 
-    public List<ItemResponseDTO> getCompletedItemsByBuyer(UUID buyerId) {
+    public List<ItemCompleteDTO> getCompletedItemsByBuyer(UUID buyerId) {
         return itemRepository.findCompletedByBuyerUserId(buyerId).stream()
-                .map(ItemResponseDTO::from)
+                .map(ItemCompleteDTO::from)
                 .collect(Collectors.toList());
     }
-
+    public Item getCompletedItemByItemId(Long itemId) {
+        return itemRepository.findById(itemId)
+                .orElseThrow(() -> new EntityNotFoundException("해당 ID의 아이템이 존재하지 않습니다."));
+    }
     @Transactional(readOnly = true)
     public List<ItemSuggestionDTO> getItemSuggestionsWithImage(String keyword) {
         return itemRepository.findTop10ByKeyword(keyword).stream()
@@ -256,4 +259,19 @@ public class ItemService {
                                 : null
                 )).toList();
     }
+
+    public void reserveItem(Long itemId, UUID buyerId) {
+        Item item = itemRepository.findById(itemId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 상품이 존재하지 않습니다."));
+
+        Profile buyer = profileRepository.findById(buyerId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 구매자가 존재하지 않습니다."));
+
+        item.setStatus(Item.Status.예약중);
+        item.setBuyer(buyer);
+
+        itemRepository.save(item);
+    }
+
+
 }

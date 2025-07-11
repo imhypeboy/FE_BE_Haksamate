@@ -115,6 +115,7 @@ const MarketplacePage: React.FC = () => {
           await createTransaction({
             itemId: product.itemid,
             sellerId: sellerId,
+            buyerId:user?.id
           })
         }
       } catch (error) {
@@ -130,12 +131,16 @@ const MarketplacePage: React.FC = () => {
 
   const handleProductClick = useCallback(
     async (product: Product) => {
-      const detailedProduct = await getProduct(product.itemid)
-      if (detailedProduct) {
-        setSelectedProduct(detailedProduct)
+      const enrichedProduct = products.find(p => p.itemid === product.itemid)
+      if (enrichedProduct) {
+        setSelectedProduct(enrichedProduct)
+      } else {
+        // fallback: 서버에서 fetch (isLiked 없음 주의)
+        const fallback = await getProduct(product.itemid)
+        if (fallback) setSelectedProduct(fallback)
       }
     },
-    [getProduct],
+    [products, getProduct]
   )
 
   const handleAddProduct = useCallback(() => {
@@ -147,10 +152,17 @@ const MarketplacePage: React.FC = () => {
   }, [user])
 
   // 상품 수정 핸들러
-  const handleEditProduct = useCallback((product: Product) => {
-    setEditingProduct(product)
-    setShowEditProduct(true)
-  }, [])
+  const handleEditProduct = useCallback(() => {
+    const filters: SearchFilters = {
+      category: selectedCategory,
+      sortBy: "latest",
+    }
+  
+    loadProducts(user?.id, filters)
+    setShowEditProduct(false)
+    setEditingProduct(null)
+    setSelectedProduct(null)
+  }, [selectedCategory, loadProducts, user])
 
   // 상품 삭제 핸들러
   const handleDeleteProduct = useCallback(
@@ -158,11 +170,22 @@ const MarketplacePage: React.FC = () => {
       try {
         await deleteProduct(productId)
         alert("상품이 삭제되었습니다.")
+  
+        // 상태 초기화
+        setSelectedProduct(null)
+        setEditingProduct(null)
+  
+        // 목록 새로고침
+        const filters: SearchFilters = {
+          category: selectedCategory,
+          sortBy: "latest",
+        }
+        loadProducts(user?.id, filters)
       } catch (error) {
         alert("상품 삭제에 실패했습니다.")
       }
     },
-    [deleteProduct],
+    [deleteProduct, selectedCategory, user, loadProducts]
   )
 
   // 상품 상태 변경 핸들러
@@ -383,6 +406,7 @@ const MarketplacePage: React.FC = () => {
           isOpen={showAddProduct}
           onClose={() => setShowAddProduct(false)}
           onCreate={createProduct}
+          onCreated={handleProductAdded}
           isDarkMode={isDarkMode}
           kakaoMapState={kakaoMapState}
         />

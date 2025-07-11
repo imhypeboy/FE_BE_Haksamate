@@ -26,6 +26,12 @@ public class ItemTransaction {
     @Column(name = "distinct_seller", nullable = false)
     private UUID distinctSeller;
 
-    @Column(columnDefinition = "TEXT")
-    private String comment;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private TransactionStatus status;
+
+
+    public enum TransactionStatus {
+        대기중, 확정됨, 거절됨
+    }
 }

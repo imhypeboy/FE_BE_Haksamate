@@ -3,16 +3,18 @@
 import type React from "react"
 import { useState } from "react"
 import { X, Star } from "lucide-react"
-import type { CreateReviewRequest } from "../types"
+import type { CreateReviewRequest, Transaction } from "../types"
 
 interface ReviewModalProps {
   isOpen: boolean
   onClose: () => void
-  itemId: string
+  itemId: number
   sellerId: string
+  buyerId: string | undefined
   sellerName: string
   onSubmit: (reviewData: CreateReviewRequest) => Promise<void>
   isDarkMode: boolean
+  transactionId: number
 }
 
 const ReviewModal: React.FC<ReviewModalProps> = ({
@@ -20,7 +22,9 @@ const ReviewModal: React.FC<ReviewModalProps> = ({
   onClose,
   itemId,
   sellerId,
+  buyerId,
   sellerName,
+  transactionId,
   onSubmit,
   isDarkMode,
 }) => {
@@ -42,15 +46,26 @@ const ReviewModal: React.FC<ReviewModalProps> = ({
     }
 
     setIsLoading(true)
-
+    const revieweeId=sellerId
+    console.log("📤 리뷰 데이터 전송:", {
+      itemId,
+      buyerId,
+      revieweeId,
+      transactionId,
+      rating,
+      comment: comment.trim(),
+    })
     try {
+
       await onSubmit({
         itemId,
-        sellerId,
+        buyerId,
+        revieweeId,
+        transactionId,
         rating,
         comment: comment.trim(),
       })
-
+      
       alert("리뷰가 작성되었습니다!")
       onClose()
       setRating(0)

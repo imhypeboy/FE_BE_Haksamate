@@ -15,6 +15,7 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
+  Users,
 } from "lucide-react"
 import { useMarketplace } from "../hooks/useMarketplace"
 import { useTransactions } from "../hooks/useTransactions"
@@ -26,6 +27,8 @@ import ReviewListModal from "./ReviewListModal"
 import ReportModal from "./ReportModal"
 import EditProductModal from "./EditProductModal"
 import ChatModal from "@/components/ChatModal"
+import TransactionListModal from "./TransactionListModal"
+import { useChatRooms, useChat } from "@/hooks/useChat"
 
 interface ProductModalProps {
   product: Product | null
@@ -59,23 +62,186 @@ const ProductModal: React.FC<ProductModalProps> = ({
   const [isMapInitialized, setIsMapInitialized] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
   const [transaction, setTransaction] = useState<any>(null)
-
+  const [showTransactionListModal, setShowTransactionListModal] = useState(false)
+  const [transactionsForProduct, setTransactionsForProduct] = useState<any[]>([])
   const mapRef = useRef<HTMLDivElement>(null)
+  const [chatroomId, setChatroomId] = useState<number | null>(null)
+  const [pendingMessage, setPendingMessage] = useState<{ message: string; buyerId: string } | null>(null)
 
-  const { toggleLike, deleteProduct, updateProduct } = useMarketplace()
-  const { getTransactionByItemAndBuyer, createTransaction } = useTransactions()
+  const { likeProduct, unlikeProduct, deleteProduct, updateProduct, completeTransaction } = useMarketplace()
+  const { confirmTransaction, rejectTransaction, createTransaction, getTransactions } = useTransactions()
   const { getReviews, createReview, getReviewSummary } = useReviews()
   const { createReport } = useReports()
-
   const { kakaoLoaded, sdkError, apiKeyError, loadingMessage } = kakaoMapState
+  const { createRoom } = useChatRooms(currentUserId ?? "")
+  const { sendMessage } = useChat(chatroomId ?? -1, currentUserId ?? "")
+
+  if (currentUserId == null) return null
+
+  const loadTransactionInfo = async () => {
+    if (!product || !currentUserId) {
+      console.log("❌ 거래 정보 로딩 조건 미충족:", { product: !!product, currentUserId })
+      setTransaction(null)
+      return
+    }
+
+    try {
+      console.log("🔍 거래 정보 로딩 시작:", {
+        itemId: product.itemid,
+        sellerId: product.sellerId,
+        currentUserId,
+        isOwner: product.sellerId === currentUserId,
+      })
+
+      // 구매자인 경우: 자신의 거래 정보 조회
+      if (product.sellerId !== currentUserId) {
+        const transactions = await getTransactions(product.itemid, product.sellerId)
+        console.log("📦 구매자 거래 정보 응답:", transactions)
+
+        // getTransactions가 배열을 반환하는 경우
+        if (Array.isArray(transactions)) {
+          const myTransaction = transactions.find((t) => t.buyerId === currentUserId)
+          console.log("🎯 내 거래 찾기 결과:", myTransaction)
+          setTransaction(myTransaction || null)
+        } else {
+          // 단일 객체를 반환하는 경우
+          setTransaction(transactions || null)
+        }
+      } else {
+        // 판매자인 경우: 확정된 거래 정보 조회
+        const transactions = await getTransactions(product.itemid, product.sellerId)
+        console.log("📦 판매자 거래 정보 응답:", transactions)
+
+        if (Array.isArray(transactions)) {
+          const confirmedTransaction = transactions.find((t) => t.status === "확정됨")
+          console.log("🎯 확정된 거래 찾기 결과:", confirmedTransaction)
+          setTransaction(confirmedTransaction || null)
+        } else {
+          setTransaction(transactions || null)
+        }
+      }
+    } catch (error) {
+      console.error("❌ 거래 정보 로딩 실패:", error)
+      setTransaction(null)
+    }
+  }
 
   useEffect(() => {
-    if (product && currentUserId && product.sellerId !== currentUserId) {
-      getTransactionByItemAndBuyer(product.itemid, currentUserId)
-        .then(setTransaction)
-        .catch(() => setTransaction(null))
+    loadTransactionInfo()
+  }, [product, currentUserId, getTransactions])
+
+  useEffect(() => {
+    if (chatroomId && chatroomId !== -1 && pendingMessage && sendMessage) {
+      const sendPendingMessage = async () => {
+        const messageToSend = pendingMessage.message
+        setPendingMessage(null)
+
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+          await sendMessage(messageToSend)
+          alert("거래가 확정되었습니다.")
+          await loadTransactionsForProduct()
+        } catch (error) {
+          console.error("메시지 전송 에러:", error)
+          if (error.message.includes("STOMP connection")) {
+            alert("채팅 연결에 문제가 있어 메시지 전송에 실패했습니다. 거래는 정상적으로 확정되었습니다.")
+          } else {
+            alert("메시지 전송에 실패했습니다.")
+          }
+        }
+      }
+      sendPendingMessage()
     }
-  }, [product, currentUserId, getTransactionByItemAndBuyer])
+  }, [chatroomId, pendingMessage, sendMessage])
+
+  useEffect(() => {
+    if (product && currentUserId && product.sellerId === currentUserId) {
+      loadTransactionsForProduct()
+    }
+  }, [product, currentUserId])
+
+  const loadTransactionsForProduct = async () => {
+    if (!product || !currentUserId) return
+    try {
+      const transactions = await getTransactions(product.itemid, product.sellerId)
+      setTransactionsForProduct(Array.isArray(transactions) ? transactions : [])
+    } catch (error) {
+      console.error("거래 목록 로딩 실패:", error)
+      setTransactionsForProduct([])
+    }
+  }
+
+  const [liked, setLiked] = useState(false)
+  const [likeCount, setLikeCount] = useState(0)
+
+  useEffect(() => {
+    if (isOpen && product) {
+      setLiked(product.isLiked ?? false)
+      setLikeCount(product.likeCount ?? 0)
+      console.log("✅ 좋아요 초기화:", product.isLiked, product.likeCount)
+    }
+  }, [isOpen, product])
+
+  // 🔧 canComplete 로직 개선
+  const [canComplete, setCanComplete] = useState(false)
+  const [cpBuyerInfo,setcpBuyerInfo]=useState("")
+  useEffect(() => {
+    const checkCanComplete = async () => {
+      console.log("🧪 canComplete 검사 시작")
+      console.log("🔍 현재 상태:", {
+        transaction,
+        transactionStatus: transaction?.status,
+        productStatus: product?.status,
+        currentUserId,
+        isOwner: product?.sellerId === currentUserId,
+      })
+
+      // 초기 조건 확인
+      if (!transaction || !product || !currentUserId) {
+        console.log("❌ 기본 조건 미충족")
+        setCanComplete(false)
+        return
+      }
+
+      // 거래 상태와 상품 상태 확인
+      if (transaction.status !== "확정됨" || product.status !== "예약중") {
+        console.log("❌ 상태 조건 미충족:", {
+          transactionStatus: transaction.status,
+          productStatus: product.status,
+        })
+        setCanComplete(false)
+        return
+      }
+
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/items/${product.itemid}/complete-info`)
+        if (!response.ok) {
+          throw new Error(`API 응답 오류: ${response.status}`)
+        }
+
+        const completeInfo = await response.json()
+        console.log("📦 completeInfo:", completeInfo)
+
+        // 현재 사용자가 구매자인지 확인
+        if (completeInfo.buyerId === currentUserId) {
+          console.log("✅ canComplete 조건 만족")
+          setCanComplete(true)
+          setcpBuyerInfo(completeInfo.buyerId)
+        } else {
+          console.log("❌ buyerId 불일치:", {
+            completeInfoBuyerId: completeInfo.buyerId,
+            currentUserId,
+          })
+          setCanComplete(false)
+        }
+      } catch (error) {
+        console.error("❌ complete-info API 오류:", error)
+        setCanComplete(false)
+      }
+    }
+
+    checkCanComplete()
+  }, [transaction, product, currentUserId])
 
   // 지도 초기화 함수
   const initializeMap = useCallback(async () => {
@@ -95,7 +261,6 @@ const ProductModal: React.FC<ProductModalProps> = ({
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 300))
-
       const container = mapRef.current
       if (!container || container.offsetWidth === 0 || container.offsetHeight === 0) {
         console.warn("❌ 지도 컨테이너 크기 문제:", {
@@ -106,48 +271,36 @@ const ProductModal: React.FC<ProductModalProps> = ({
         return
       }
 
-      // meetLocation 구조 확인
       console.log("📍 meetLocation 데이터:", product.meetLocation)
-
-      // 주소 추출 - 다양한 형태 지원
       let address = ""
       if (typeof product.meetLocation === "string") {
         address = product.meetLocation
       } else if (product.meetLocation?.address) {
         address = product.meetLocation.address
-      }  else {
+      } else {
         console.error("❌ 주소 정보를 찾을 수 없습니다:", product.meetLocation)
         setMapError("주소 정보가 올바르지 않습니다.")
         return
       }
 
       console.log("🔍 검색할 주소:", address)
-
-      // Geocoder로 주소 검색
       const geocoder = new window.kakao.maps.services.Geocoder()
 
-      // 먼저 정확한 주소 검색 시도
       geocoder.addressSearch(address, (result: any, status: any) => {
         console.log("📍 주소 검색 결과:", { status, result })
-
         if (status === window.kakao.maps.services.Status.OK && result.length > 0) {
           const coords = new window.kakao.maps.LatLng(result[0].y, result[0].x)
           console.log("✅ 좌표 변환 성공:", result[0].y, result[0].x)
-
           createMapWithCoords(coords, address)
         } else {
           console.warn("⚠️ 정확한 주소 검색 실패, 키워드 검색 시도")
-
-          // 정확한 주소 검색 실패 시 키워드 검색 시도
           const places = new window.kakao.maps.services.Places()
           places.keywordSearch(address, (data: any, status: any) => {
             console.log("🔍 키워드 검색 결과:", { status, dataLength: data?.length })
-
             if (status === window.kakao.maps.services.Status.OK && data.length > 0) {
               const place = data[0]
               const coords = new window.kakao.maps.LatLng(place.y, place.x)
               console.log("✅ 키워드 검색 성공:", place.place_name, place.y, place.x)
-
               createMapWithCoords(coords, place.place_name || address)
             } else {
               console.error("❌ 키워드 검색도 실패")
@@ -163,7 +316,6 @@ const ProductModal: React.FC<ProductModalProps> = ({
     }
   }, [kakaoLoaded, product?.meetLocation])
 
-  // 좌표로 지도 생성하는 함수
   const createMapWithCoords = useCallback((coords: any, locationName: string) => {
     try {
       const container = mapRef.current
@@ -177,13 +329,11 @@ const ProductModal: React.FC<ProductModalProps> = ({
       console.log("🗺️ 지도 인스턴스 생성")
       const mapInstance = new window.kakao.maps.Map(container, options)
 
-      // 마커 생성
       const newMarker = new window.kakao.maps.Marker({
         position: coords,
       })
       newMarker.setMap(mapInstance)
 
-      // 인포윈도우 생성 (선택사항)
       const infowindow = new window.kakao.maps.InfoWindow({
         content: `<div style="padding:5px;font-size:12px;width:150px;text-align:center;">${locationName}</div>`,
       })
@@ -193,10 +343,8 @@ const ProductModal: React.FC<ProductModalProps> = ({
       setMarker(newMarker)
       setIsMapInitialized(true)
       setMapError(null)
-
       console.log("✅ 지도 초기화 완료")
 
-      // 지도 레이아웃 재조정
       setTimeout(() => {
         try {
           mapInstance.relayout()
@@ -212,7 +360,6 @@ const ProductModal: React.FC<ProductModalProps> = ({
     }
   }, [])
 
-  // 지도 표시/숨김 토글
   const toggleMap = useCallback(() => {
     setShowMap((prev) => {
       const newShowMap = !prev
@@ -223,7 +370,6 @@ const ProductModal: React.FC<ProductModalProps> = ({
     })
   }, [isMapInitialized, kakaoLoaded, initializeMap])
 
-  // 모달이 닫힐 때 지도 상태 초기화
   useEffect(() => {
     if (!isOpen) {
       setShowMap(false)
@@ -251,6 +397,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
       await createTransaction({
         itemId: product.itemid,
         sellerId: product.sellerId,
+        buyerId: currentUserId,
       })
       alert("구매 요청이 전송되었습니다!")
     } catch (error) {
@@ -264,8 +411,22 @@ const ProductModal: React.FC<ProductModalProps> = ({
       return
     }
     try {
-      await toggleLike(product.itemid, currentUserId)
+      console.log("❤️ 좋아요 토글 요청 시작", {
+        productId: product.itemid,
+        userId: currentUserId,
+      })
+      if (liked) {
+        await unlikeProduct(product.itemid, currentUserId)
+        setLiked(false)
+        setLikeCount((prev) => prev - 1)
+      } else {
+        await likeProduct(product.itemid, currentUserId)
+        setLiked(true)
+        setLikeCount((prev) => prev + 1)
+      }
+      console.log("✅ 좋아요 토글 성공")
     } catch (error) {
+      console.error("❌ 좋아요 토글 중 에러 발생:", error)
       alert("찜하기에 실패했습니다.")
     }
   }
@@ -293,8 +454,16 @@ const ProductModal: React.FC<ProductModalProps> = ({
   const handleReviewSubmit = async (reviewData: any) => {
     try {
       await createReview(reviewData)
+      await completeTransaction(reviewData.itemId)
+
+      if (product && currentUserId) {
+        const updatedTransaction = await getTransactions(product.itemid, currentUserId)
+        setTransaction(updatedTransaction)
+      }
+
+      alert("리뷰가 작성되었고, 거래가 완료 처리되었습니다.")
     } catch (error) {
-      throw error
+      alert(error instanceof Error ? error.message : "리뷰 작성 중 문제가 발생했습니다.")
     }
   }
 
@@ -322,6 +491,33 @@ const ProductModal: React.FC<ProductModalProps> = ({
     }
   }
 
+  const handleConfirmTransaction = async (transactionId: number, buyerId: string) => {
+    try {
+      const room = await createRoom(currentUserId, buyerId)
+      if (!room) throw new Error("채팅방 생성 실패")
+
+      await confirmTransaction(transactionId, product, buyerId)
+
+      setChatroomId(room.chatroomId)
+      setPendingMessage({
+        message: `거래 물품 ${product.name}의 ${product.sellerName}님과의 거래가 확정되었습니다. 위치:${product.meetLocation.address}`,
+        buyerId,
+      })
+    } catch (error) {
+      alert("거래 확정에 실패했습니다.")
+    }
+  }
+
+  const handleRejectTransaction = async (transactionId: number) => {
+    try {
+      await rejectTransaction(transactionId)
+      alert("거래가 거절되었습니다.")
+      await loadTransactionsForProduct()
+    } catch (error) {
+      alert("거래 거절에 실패했습니다.")
+    }
+  }
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("ko-KR").format(price) + "원"
   }
@@ -329,27 +525,21 @@ const ProductModal: React.FC<ProductModalProps> = ({
   const formatTimeAgo = (timestamp: number) => {
     const now = Date.now()
     const diff = now - timestamp
-
     const minutes = Math.floor(diff / 60000)
     if (minutes < 1) return "방금 전"
     if (minutes < 60) return `${minutes}분 전`
-
     const hours = Math.floor(minutes / 60)
     if (hours < 24) return `${hours}시간 전`
-
     const days = Math.floor(hours / 24)
     return `${days}일 전`
   }
 
-  // 주소 표시용 함수
   const getDisplayAddress = () => {
     if (!product.meetLocation) return "위치 정보 없음"
-
     if (typeof product.meetLocation === "string") {
       return product.meetLocation
     }
-
-    return product.meetLocation.address  || "위치 정보 없음"
+    return product.meetLocation.address || "위치 정보 없음"
   }
 
   return (
@@ -514,7 +704,6 @@ const ProductModal: React.FC<ProductModalProps> = ({
                         {showMap ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                       </div>
                     </button>
-
                     {/* 지도 영역 */}
                     <div
                       className={`overflow-hidden transition-all duration-300 ease-in-out ${
@@ -537,7 +726,6 @@ const ProductModal: React.FC<ProductModalProps> = ({
                         ) : (
                           <div className="relative">
                             <div ref={mapRef} className="w-full h-64" style={{ minHeight: "256px" }} />
-
                             {!isMapInitialized && !mapError && (
                               <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-700">
                                 <div className="text-center space-y-2">
@@ -548,7 +736,6 @@ const ProductModal: React.FC<ProductModalProps> = ({
                                 </div>
                               </div>
                             )}
-
                             {mapError && (
                               <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-700">
                                 <div className="text-center space-y-2 p-4">
@@ -609,8 +796,8 @@ const ProductModal: React.FC<ProductModalProps> = ({
                             : "bg-gray-100 hover:bg-gray-200 text-gray-700"
                       }`}
                     >
-                      <Heart size={20} fill={product.isLiked ? "currentColor" : "none"} />
-                      찜하기 ({product.likeCount})
+                      <Heart size={20} fill={liked ? "currentColor" : "none"} />
+                      찜하기 ({likeCount})
                     </button>
                     <button
                       onClick={() => setShowChatModal(true)}
@@ -621,6 +808,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
                     </button>
                   </div>
                 )}
+
                 {!isOwner && product.status === "판매중" && (
                   <button
                     onClick={handlePurchase}
@@ -629,15 +817,21 @@ const ProductModal: React.FC<ProductModalProps> = ({
                     구매하기
                   </button>
                 )}
-                {canReview && (
+
+                {/* 🔧 거래 완료 버튼 개선 */}
+                {canComplete && (
                   <button
-                    onClick={() => setShowReviewModal(true)}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl font-medium transition-colors"
+                    onClick={() => {
+                      if (window.confirm("정말 거래 완료 처리하시겠습니까?")) {
+                        setShowReviewModal(true)
+                      }
+                    }}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors"
                   >
-                    <Star size={20} />
-                    리뷰 작성하기
+                    거래 완료
                   </button>
                 )}
+
                 <div className="flex gap-3">
                   <button
                     onClick={() => setShowReviewListModal(true)}
@@ -660,6 +854,54 @@ const ProductModal: React.FC<ProductModalProps> = ({
                     </button>
                   )}
                 </div>
+
+                {/* 판매자일 때 거래 목록 버튼 추가 */}
+                {isOwner && (
+                  <button
+                    onClick={() => setShowTransactionListModal(true)}
+                    className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-colors ${
+                      isDarkMode
+                        ? "bg-purple-600 hover:bg-purple-700 text-white"
+                        : "bg-purple-500 hover:bg-purple-600 text-white"
+                    }`}
+                  >
+                    <Users size={20} />
+                    거래 요청 목록 ({transactionsForProduct.length})
+                  </button>
+                )}
+
+                {isOwner && transaction && transaction.status === "대기중" && (
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await confirmTransaction(transaction.transactionId, product, transaction.buyerId)
+                          alert("거래가 확정되었습니다.")
+                          setTransaction({ ...transaction, status: "확정됨" })
+                        } catch (e) {
+                          alert("거래 확정 실패")
+                        }
+                      }}
+                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded"
+                    >
+                      거래 확정
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await rejectTransaction(transaction.transactionId)
+                          alert("거래가 거절되었습니다.")
+                          setTransaction({ ...transaction, status: "거절됨" })
+                        } catch (e) {
+                          alert("거래 거절 실패")
+                        }
+                      }}
+                      className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded"
+                    >
+                      거래 거절
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -675,9 +917,12 @@ const ProductModal: React.FC<ProductModalProps> = ({
           sellerId={product.sellerId}
           sellerName={product.sellerName}
           onSubmit={handleReviewSubmit}
+          buyerId={cpBuyerInfo}
+          transactionId={transaction.transactionId}
           isDarkMode={isDarkMode}
         />
       )}
+
       {showReviewListModal && (
         <ReviewListModal
           isOpen={showReviewListModal}
@@ -690,6 +935,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
           isDarkMode={isDarkMode}
         />
       )}
+
       {showReportModal && (
         <ReportModal
           isOpen={showReportModal}
@@ -703,6 +949,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
           isDarkMode={isDarkMode}
         />
       )}
+
       {showEditModal && (
         <EditProductModal
           isOpen={showEditModal}
@@ -713,11 +960,23 @@ const ProductModal: React.FC<ProductModalProps> = ({
           kakaoMapState={kakaoMapState}
         />
       )}
+
       {showChatModal && (
         <ChatModal
           isOpen={showChatModal}
           onClose={() => setShowChatModal(false)}
           sellerId={product.sellerId}
+          isDarkMode={isDarkMode}
+        />
+      )}
+
+      {showTransactionListModal && (
+        <TransactionListModal
+          isOpen={showTransactionListModal}
+          onClose={() => setShowTransactionListModal(false)}
+          transactions={transactionsForProduct}
+          onConfirm={handleConfirmTransaction}
+          onReject={handleRejectTransaction}
           isDarkMode={isDarkMode}
         />
       )}

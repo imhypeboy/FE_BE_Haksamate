@@ -72,12 +72,6 @@ export interface LocationData {
   longitude: number
 }
 
-export interface CreateReviewRequest {
-  itemId: number
-  sellerId: string
-  rating: number
-  comment: string
-}
 
 export interface Review {
   id: string
@@ -91,7 +85,14 @@ export interface Review {
   reviewerName: string
   buyerAvatar?: string
 }
-
+export interface CreateReviewRequest {
+  itemId: number
+  buyerId: string |undefined
+  revieweeId: string
+  transactionId: number // ← 이게 누락되면 백엔드 에러 발생
+  rating: number
+  comment: string
+}
 export interface CreateReportRequest {
   reporterId: string|null|undefined
   reportedId: string
@@ -99,17 +100,17 @@ export interface CreateReportRequest {
   reason: string
 }
 
-export interface Transaction {
-  transactionid: number
-  itemId: number
-  sellerId: string
-  buyerId: string
-  status: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED"
-  regdate: number
+export type Transaction = {
+  transactionId: number
+  item: any // 혹은 Item 타입
+  profile: any // 혹은 Profile 타입
+  distinctSeller: string // UUID
+  status: "대기중" | "확정됨" | "거절됨"
 }
 
 export interface CreateTransactionRequest {
   itemId: number
+  buyerId:string
   sellerId: string
 }
 

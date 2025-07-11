@@ -8,7 +8,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -21,7 +23,9 @@ public class ReviewController {
     @PostMapping
     public ResponseEntity<?> createReview(@RequestBody ReviewRequestDTO dto) {
         reviewService.createReview(dto);
-        return ResponseEntity.ok("리뷰가 저장되었습니다.");
+        Map<String, String> result = new HashMap<>();
+        result.put("message", "리뷰가 저장되었습니다.");
+        return ResponseEntity.ok(result); // JSON 형태 응답
     }
 
     @GetMapping("/seller/{sellerId}")
