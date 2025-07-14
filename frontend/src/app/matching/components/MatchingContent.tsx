@@ -4,6 +4,8 @@ import React from "react"
 import ProfileCard from "./ProfileCard"
 import ActionButtons from "./ActionButtons"
 import type { Profile } from "../types"
+import { useLocationShare } from "../hooks/useLocationShare"
+import { MapContainer } from "./MapContainer"
 
 interface MatchingContentProps {
   profile: Profile
@@ -39,8 +41,37 @@ const MatchingContent = React.memo(
     onLike,
     onDislike,
   }: MatchingContentProps) => {
+    // 위치 공유 훅 사용 (profile.id를 userId로 전달)
+    const { nearbyUsers, refreshNearbyUsers } = useLocationShare(profile.id)
+    // LocationData[] -> Profile[] 변환
+    const mappedNearbyUsers = nearbyUsers.map((user) => ({
+      id: Number(user.userId) || 0, // string -> number 변환, 실패시 0
+      name: user.userName,
+      age: 0, // 실제 데이터에 맞게 수정 필요
+      mbti: '', // 실제 데이터에 맞게 수정 필요
+      nickname: user.userName,
+      tags: [], // 실제 데이터에 맞게 수정 필요
+      description: '', // 실제 데이터에 맞게 수정 필요
+    }))
+    // 임시 상태값 (실제 구현에 맞게 수정 필요)
+    const mapLoaded = true
+    const kakaoLoaded = true
+    const currentLocation = null
+    const onRefresh = refreshNearbyUsers
+
     return (
       <div className="relative w-full max-w-sm">
+        {/* 지도 영역 */}
+        <div className="mb-6">
+          <MapContainer
+            isDarkMode={isDarkMode}
+            mapLoaded={mapLoaded}
+            nearbyUsers={mappedNearbyUsers}
+            kakaoLoaded={kakaoLoaded}
+            currentLocation={currentLocation}
+            onRefresh={onRefresh}
+          />
+        </div>
         {/* Profile Card */}
         <ProfileCard
           profile={profile}

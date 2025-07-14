@@ -178,10 +178,8 @@ const MatchingPage: React.FC = () => {
     }
   }, [exitX, resetDragState])
 
-  // 로딩 중이거나 프로필이 없을 때 로딩 화면 표시
-  if (isProfilesLoading || !profile) {
-    console.log("⏳ 로딩 화면 표시:", { isProfilesLoading, hasProfile: !!profile })
-
+  // 로딩 중일 때만 로딩 화면 표시, profile이 없으면 아무것도 렌더링하지 않음
+  if (isProfilesLoading) {
     return (
       <div
         className={`min-h-screen flex items-center justify-center transition-all duration-700 ${
@@ -200,16 +198,12 @@ const MatchingPage: React.FC = () => {
           </div>
           <h3 className={`text-xl font-bold mb-2 ${isDarkMode ? "text-white" : "text-gray-800"}`}>프로필 로딩 중...</h3>
           <p className={`text-sm ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}>새로운 사람들을 찾고 있어요</p>
-
-          {/* 디버그 정보 */}
-          <div className="mt-4 text-xs opacity-50">
-            <p>로딩 상태: {isProfilesLoading ? "로딩중" : "완료"}</p>
-            <p>프로필 존재: {profile ? "있음" : "없음"}</p>
-            <p>사용자 ID: {user?.id || "없음"}</p>
-          </div>
         </div>
       </div>
     )
+  }
+  if (!profile) {
+    return null;
   }
 
   console.log("✅ 메인 컨텐츠 렌더링")

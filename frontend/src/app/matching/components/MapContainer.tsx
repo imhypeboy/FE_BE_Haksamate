@@ -59,28 +59,7 @@ export const MapContainer = React.memo(
         </div>
 
         {/* 지도 하단 정보 */}
-        <div className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className={`text-sm font-medium ${isDarkMode ? "text-white" : "text-gray-800"}`}>
-                근처 사용자 {nearbyUsers.length}명
-              </p>
-              <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>반경 1km 내</p>
-            </div>
-            <button
-              onClick={onRefresh}
-              disabled={!kakaoLoaded}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
-                isDarkMode
-                  ? "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50"
-                  : "bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50"
-              }`}
-            >
-              <RefreshCw size={12} />
-              새로고침
-            </button>
-          </div>
-        </div>
+        {/* 아래 정보 영역 전체 삭제 */}
       </div>
     )
   },
