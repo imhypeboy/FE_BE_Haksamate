@@ -283,12 +283,14 @@ const MatchingPage: React.FC = () => {
         />
 
         {/* Chat Modal - 실제 채팅방 ID와 함께 */}
-        <ChatModal
-          isOpen={chatModalOpen}
-          onClose={handleCloseChatModalExtended}
-          initialRoomId={selectedChatRoomId ?? undefined}
-          isDarkMode={isDarkMode}
-        />
+        {chatModalOpen && selectedChatRoomId && (
+          <ChatModal
+            isOpen={chatModalOpen}
+            onClose={handleCloseChatModalExtended}
+            initialRoomId={selectedChatRoomId}
+            isDarkMode={isDarkMode}
+          />
+        )}
       </div>
     </>
   )

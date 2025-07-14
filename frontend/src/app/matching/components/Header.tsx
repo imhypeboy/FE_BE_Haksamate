@@ -18,7 +18,7 @@ const Header = React.memo(({ isDarkMode, onToggleTheme, onOpenChat }: HeaderProp
           isDarkMode ? "text-white" : "text-gray-800"
         } tracking-tight`}
       >
-        매칭하기
+        친구찾기
       </h1>
       <div className="flex items-center gap-3 md:gap-4">
         <button

@@ -74,7 +74,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
       { label: "시간표", icon: <Calendar size={20} />, path: "/", category: "main" },
       { label: "타이머", icon: <Clock size={20} />, path: "/timer", category: "main" },
       { label: "성적 관리", icon: <GraduationCap size={20} />, path: "/grades", category: "main" },
-      { label: "매칭하기", icon: <Heart size={20} />, path: "/matching", category: "main" },
+      { label: "친구찾기", icon: <Heart size={20} />, path: "/matching", category: "main" },
       { label: "중고마켓", icon: <ShoppingBag size={20} />, path: "/marketplace", badge: "NEW", category: "main" }, // 중고마켓 메뉴 추가
       { label: "시험 일정", icon: <BookOpen size={20} />, path: "/exams", category: "main" },
       { label: "출석 관리", icon: <UserCheck size={20} />, path: "/attendance", category: "main" },

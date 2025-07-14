@@ -298,7 +298,7 @@ export default function Page() {
         subject,
       }))
 
-      setTimetable(newTimetable)
+      saveTimetable(newTimetable)
       showToast({
         type: "success",
         title: "시간표 생성 완료",

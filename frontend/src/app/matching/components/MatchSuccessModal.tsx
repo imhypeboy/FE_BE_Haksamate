@@ -4,7 +4,7 @@ import type { Profile } from '../types'
 
 interface MatchSuccessModalProps {
   isOpen: boolean
-  profile: Profile
+  profile: Profile 
   isDarkMode: boolean
   onClose: () => void
   onStartChat: () => void
