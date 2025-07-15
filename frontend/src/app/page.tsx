@@ -9,7 +9,7 @@ import { useSubjects, type Subject } from "@/hooks/useSubjects"
 import { useTimetable } from "@/hooks/useTimetable"
 import { showToast, ToastContainer } from "./components/toast"
 import { BookOpen, Plus } from "lucide-react"
-import { fetchExams, type Exam } from "@/lib/examApi"
+import { fetchExams, fetchChecklist, type Exam, type ChecklistItem } from "@/lib/examApi"
 
 // Components
 import Sidebar from "./sidebar/sidebar"
@@ -76,9 +76,18 @@ export default function Page() {
     dueDate: string
   }[]>([])
 
-  // 시험 데이터 불러오기
+  // 체크리스트 데이터 state 추가
+  const [checklistItems, setChecklistItems] = useState<{
+    id: string
+    text: string
+    done: boolean
+    examId: number
+    examSubject: string
+  }[]>([])
+
+  // 시험 데이터와 체크리스트 불러오기
   useEffect(() => {
-    const loadExams = async () => {
+    const loadExamsAndChecklist = async () => {
       if (!user?.id) return
       try {
         const exams: Exam[] = await fetchExams(user.id)
@@ -91,11 +100,41 @@ export default function Page() {
             dueDate: exam.date,
           }))
         )
+
+        // 모든 시험의 체크리스트 불러오기
+        const allChecklistItems: {
+          id: string
+          text: string
+          done: boolean
+          examId: number
+          examSubject: string
+        }[] = []
+
+        for (const exam of exams) {
+          if (exam.id) {
+            try {
+              const checklist = await fetchChecklist(user.id, exam.id)
+              checklist.forEach((item) => {
+                allChecklistItems.push({
+                  id: String(item.id),
+                  text: `[${exam.subject}] ${item.task}`,
+                  done: item.completed,
+                  examId: exam.id!,
+                  examSubject: exam.subject,
+                })
+              })
+            } catch (e) {
+              // 개별 체크리스트 로드 실패는 무시
+            }
+          }
+        }
+
+        setChecklistItems(allChecklistItems)
       } catch (e) {
         // 에러 무시(로그인 전 등)
       }
     }
-    loadExams()
+    loadExamsAndChecklist()
   }, [user?.id])
 
   const timeOptions = useMemo(
@@ -546,6 +585,7 @@ export default function Page() {
               <DashboardPanel
                 subjects={subjects}
                 tasks={examTasks}
+                checklistItems={checklistItems}
               />
             </div>
           </div>

@@ -20,7 +20,7 @@ export interface ChecklistItem {
 }
 
 const EXAMS_TABLE = "exams"
-const CHECKLIST_TABLE = "exam_checklist"
+const CHECKLIST_TABLE = "exam_checklists"
 
 // 시험 목록 조회
 export const fetchExams = async (userId: string): Promise<Exam[]> => {
@@ -121,7 +121,7 @@ export const fetchChecklist = async (userId: string, examId: number): Promise<Ch
             .select("*")
             .eq("user_id", userId)
             .eq("exam_id", examId)
-            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
 
         if (error) {
             throw error

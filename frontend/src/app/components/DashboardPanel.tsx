@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { motion } from "framer-motion"
-import { AlarmClock, CalendarDays, CheckCircle, Clock8 } from "lucide-react"
+import { AlarmClock, CalendarDays, CheckCircle, Clock8, ChevronDown, ChevronUp, FolderOpen, BookOpen, Target } from "lucide-react"
 import type { Subject } from "@/hooks/useSubjects"
+import { toggleChecklistItem } from "@/lib/examApi"
+import { supabase } from "@/lib/supabaseClient"
 
 interface Task {
   id: string
@@ -12,12 +14,21 @@ interface Task {
   dueDate: string // ISO date string
 }
 
+interface ChecklistItem {
+  id: string
+  text: string
+  done: boolean
+  examId: number
+  examSubject: string
+}
+
 interface DashboardPanelProps {
   subjects: Subject[]
   tasks?: Task[] // 과제 / 시험
+  checklistItems?: ChecklistItem[] // 체크리스트 항목들
 }
 
-export default function DashboardPanel({ subjects, tasks = [] }: DashboardPanelProps) {
+export default function DashboardPanel({ subjects, tasks = [], checklistItems = [] }: DashboardPanelProps) {
   // ------------------ 다음 수업 계산 ------------------
   const nextClass = useMemo(() => {
     if (subjects.length === 0) return null
@@ -82,23 +93,125 @@ export default function DashboardPanel({ subjects, tasks = [] }: DashboardPanelP
   }, [tasks])
 
   // ------------------ Todo ------------------
-  type Todo = { id: string; text: string; done: boolean }
+  type Todo = { id: string; text: string; done: boolean; isChecklist?: boolean; examId?: number }
   const [todos, setTodos] = useState<Todo[]>([])
   const [input, setInput] = useState("")
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
 
-  // localStorage persistence
+  // localStorage persistence + 체크리스트 항목 추가
   useEffect(() => {
     const stored = localStorage.getItem("hm_todos")
-    if (stored) setTodos(JSON.parse(stored))
-  }, [])
+    const localTodos = stored ? JSON.parse(stored) : []
+    
+    // 체크리스트 항목들을 TODO에 추가 (중복 방지)
+    const checklistTodos = checklistItems.map(item => ({
+      id: `checklist-${item.id}`,
+      text: item.text,
+      done: item.done,
+      isChecklist: true,
+      examId: item.examId
+    }))
+    
+    // 기존 TODO와 체크리스트 항목 합치기 (중복 제거)
+    const existingIds = new Set(localTodos.map((t: Todo) => t.id))
+    const newChecklistTodos = checklistTodos.filter(item => !existingIds.has(item.id))
+    
+    setTodos([...localTodos, ...newChecklistTodos])
+  }, [checklistItems])
+
   useEffect(() => {
-    localStorage.setItem("hm_todos", JSON.stringify(todos))
+    // 체크리스트가 아닌 항목만 localStorage에 저장
+    const nonChecklistTodos = todos.filter(todo => !todo.isChecklist)
+    localStorage.setItem("hm_todos", JSON.stringify(nonChecklistTodos))
   }, [todos])
 
   const addTodo = () => {
     if (!input.trim()) return
     setTodos([{ id: Date.now().toString(), text: input.trim(), done: false }, ...todos])
     setInput("")
+  }
+
+  // TODO 토글 (체크리스트 항목인 경우 데이터베이스도 업데이트)
+  const toggleTodo = async (todo: Todo) => {
+    if (todo.isChecklist && todo.examId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.id) {
+          // 체크리스트 ID 추출 (checklist-123 형태에서 123 추출)
+          const checklistId = parseInt(todo.id.replace('checklist-', ''))
+          await toggleChecklistItem(checklistId, !todo.done, session.user.id)
+        }
+      } catch (e) {
+        console.error('체크리스트 업데이트 실패:', e)
+      }
+    }
+    
+    setTodos((prev) =>
+      prev.map((t) => (t.id === todo.id ? { ...t, done: !t.done } : t)),
+    )
+  }
+
+  // TODO 삭제 (체크리스트 항목은 삭제 불가)
+  const deleteTodo = (todoId: string) => {
+    const todo = todos.find(t => t.id === todoId)
+    if (todo?.isChecklist) {
+      // 체크리스트 항목은 삭제 불가
+      return
+    }
+    setTodos((prev) => prev.filter((t) => t.id !== todoId))
+  }
+
+  // 카테고리별로 그룹화
+  const groupedTodos = useMemo(() => {
+    const groups: { [key: string]: Todo[] } = {}
+    
+    todos.forEach(todo => {
+      if (todo.isChecklist) {
+        // 체크리스트 항목: 카테고리별로 그룹화
+        const category = todo.text.match(/^\[([^\]]+)\]/)?.[1] || '기타'
+        if (!groups[category]) groups[category] = []
+        groups[category].push(todo)
+      } else {
+        // 일반 TODO: '일반' 카테고리로 그룹화
+        if (!groups['일반']) groups['일반'] = []
+        groups['일반'].push(todo)
+      }
+    })
+    
+    return groups
+  }, [todos])
+
+  // 카테고리 접기/펼치기 토글
+  const toggleCategory = (category: string) => {
+    setCollapsedCategories(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(category)) {
+        newSet.delete(category)
+      } else {
+        newSet.add(category)
+      }
+      return newSet
+    })
+  }
+
+  // 카테고리별 아이콘과 색상
+  const getCategoryStyle = (category: string) => {
+    if (category === '일반') {
+      return {
+        icon: <Target className="h-4 w-4" />,
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+        textColor: 'text-blue-700',
+        headerBg: 'bg-blue-100'
+      }
+    }
+    return {
+      icon: <BookOpen className="h-4 w-4" />,
+      bgColor: 'bg-[#8fc3ef]/10',
+      borderColor: 'border-[#8fc3ef]/30',
+      textColor: 'text-[#8fc3ef]',
+      headerBg: 'bg-[#8fc3ef]/20'
+    }
   }
 
   return (
@@ -179,32 +292,93 @@ export default function DashboardPanel({ subjects, tasks = [] }: DashboardPanelP
             추가
           </button>
         </div>
-        {todos.length === 0 ? (
+        {Object.entries(groupedTodos).length === 0 ? (
           <p className="text-gray-500 text-sm">할 일이 없습니다.</p>
         ) : (
-          <ul className="space-y-2 max-h-40 overflow-y-auto pr-1">
-            {todos.map((todo) => (
-              <li key={todo.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={todo.done}
-                  onChange={() =>
-                    setTodos((prev) =>
-                      prev.map((t) => (t.id === todo.id ? { ...t, done: !t.done } : t)),
-                    )
-                  }
-                  className="h-4 w-4 text-blue-500"
-                />
-                <span className={todo.done ? "line-through text-gray-400" : "text-gray-800"}>{todo.text}</span>
-                <button
-                  onClick={() => setTodos((prev) => prev.filter((t) => t.id !== todo.id))}
-                  className="ml-auto text-gray-400 hover:text-gray-600"
+          <div className="space-y-3">
+            {Object.entries(groupedTodos).map(([category, items]) => {
+              const style = getCategoryStyle(category)
+              const completedCount = items.filter(item => item.done).length
+              const totalCount = items.length
+              
+              return (
+                <motion.div
+                  key={category}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`${style.bgColor} ${style.borderColor} border rounded-xl overflow-hidden shadow-sm`}
                 >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <div 
+                    className={`${style.headerBg} px-4 py-3 cursor-pointer transition-colors hover:opacity-80`}
+                    onClick={() => toggleCategory(category)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={style.textColor}>
+                          {style.icon}
+                        </span>
+                        <h5 className="font-semibold text-gray-800">{category}</h5>
+                        <span className="text-xs bg-white/60 px-2 py-1 rounded-full text-gray-600">
+                          {completedCount}/{totalCount}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {collapsedCategories.has(category) ? (
+                          <ChevronDown className="h-4 w-4 text-gray-500" />
+                        ) : (
+                          <ChevronUp className="h-4 w-4 text-gray-500" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {!collapsedCategories.has(category) && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="px-4 py-3"
+                    >
+                      <ul className="space-y-2">
+                        {items.map((todo) => (
+                          <motion.li
+                            key={todo.id}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/50 transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={todo.done}
+                              onChange={() => toggleTodo(todo)}
+                              className="h-4 w-4 text-blue-500 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <span className={`flex-1 text-sm ${todo.done ? "line-through text-gray-400" : "text-gray-700"}`}>
+                              {todo.isChecklist ? todo.text.replace(/^\[[^\]]+\]\s*/, '') : todo.text}
+                            </span>
+                            {todo.isChecklist && (
+                              <span className="text-xs bg-[#8fc3ef]/20 text-[#8fc3ef] px-2 py-1 rounded-full font-medium">
+                                체크리스트
+                              </span>
+                            )}
+                            {!todo.isChecklist && (
+                              <button
+                                onClick={() => deleteTodo(todo.id)}
+                                className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </motion.li>
+                        ))}
+                      </ul>
+                    </motion.div>
+                  )}
+                </motion.div>
+              )
+            })}
+          </div>
         )}
       </motion.div>
     </div>
