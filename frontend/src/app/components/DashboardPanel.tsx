@@ -351,10 +351,20 @@ export default function DashboardPanel({ subjects, tasks = [], checklistItems = 
                             <input
                               type="checkbox"
                               checked={todo.done}
-                              onChange={() => toggleTodo(todo)}
-                              className="h-4 w-4 text-blue-500 rounded border-gray-300 focus:ring-blue-500"
+                              onChange={(e) => {
+                                e.stopPropagation()
+                                toggleTodo(todo)
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="h-4 w-4 text-blue-500 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
                             />
-                            <span className={`flex-1 text-sm ${todo.done ? "line-through text-gray-400" : "text-gray-700"}`}>
+                            <span 
+                              className={`flex-1 text-sm cursor-pointer ${todo.done ? "line-through text-gray-400" : "text-gray-700"}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleTodo(todo)
+                              }}
+                            >
                               {todo.isChecklist ? todo.text.replace(/^\[[^\]]+\]\s*/, '') : todo.text}
                             </span>
                             {todo.isChecklist && (
@@ -364,7 +374,10 @@ export default function DashboardPanel({ subjects, tasks = [], checklistItems = 
                             )}
                             {!todo.isChecklist && (
                               <button
-                                onClick={() => deleteTodo(todo.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  deleteTodo(todo.id)
+                                }}
                                 className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded"
                               >
                                 ×
